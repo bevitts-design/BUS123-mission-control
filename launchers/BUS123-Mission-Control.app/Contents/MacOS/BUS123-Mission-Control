@@ -1,0 +1,53 @@
+#!/bin/zsh
+
+MISSION_DIR="/Users/bethanyevittsair2/Documents/GitHub/BUS123-mission-control"
+LOG_DIR="$MISSION_DIR/logs"
+MISSION_URL="http://localhost:8123/?v=canvas-link-1"
+
+mkdir -p "$LOG_DIR"
+
+find_node() {
+  local candidate
+  for candidate in \
+    "/opt/homebrew/bin/node" \
+    "/usr/local/bin/node" \
+    "/Applications/Codex.app/Contents/Resources/node"
+  do
+    if [[ -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+port_is_live() {
+  /usr/sbin/lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+start_mission_control() {
+  if port_is_live 8123; then
+    return
+  fi
+
+  local node_bin
+  node_bin="$(find_node)" || {
+    echo "Could not find Node.js. Checked Homebrew and Codex app runtime locations." >> "$LOG_DIR/mission-control-server.log"
+    return
+  }
+
+  cd "$MISSION_DIR" || exit 1
+  /usr/bin/nohup "$node_bin" server.mjs >> "$LOG_DIR/mission-control-server.log" 2>&1 </dev/null &
+}
+
+start_mission_control
+
+for _ in {1..20}; do
+  if port_is_live 8123; then
+    break
+  fi
+  sleep 0.25
+done
+
+/usr/bin/open "$MISSION_URL"

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BUS123 Mission Control</title>
+  <link rel="stylesheet" href="assets/mission-control.css">
+</head>
+<body>
+  <main class="shell">
+    <aside class="rail" aria-label="Mission areas">
+      <div class="brand-mark">B123</div>
+      <nav>
+        <a class="active" href="#today">Today</a>
+        <a href="#materials">Materials</a>
+        <a href="#grading">Grading</a>
+        <a href="#course-map">Course Map</a>
+        <a href="#systems">Systems</a>
+      </nav>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Local classroom operating system</p>
+          <h1>BUS123 Mission Control</h1>
+        </div>
+        <div class="quick-actions">
+          <button data-action="open-canvas">Canvas</button>
+          <button data-action="open-public-site">Open Public Site</button>
+          <button data-action="open-public-repo">Public Repo</button>
+          <button data-action="open-instructor-repo">Instructor Repo</button>
+        </div>
+      </header>
+
+      <section id="today" class="hero-grid">
+        <article class="panel current">
+          <div class="panel-heading">
+            <span class="status live">Ready</span>
+            <span>Today</span>
+          </div>
+          <h2>Course cockpit online</h2>
+          <p>Use this page as the local launcher for BUS123 public materials, instructor files, grading runs, and course-map maintenance.</p>
+          <div class="button-row">
+            <button data-action="open-course-map">Course Map JSON</button>
+            <button data-action="open-drive-template">Brand Template</button>
+            <button data-action="open-project-instructions">Project Instructions</button>
+          </div>
+        </article>
+
+        <article class="panel metrics">
+          <div>
+            <span class="metric">Public</span>
+            <strong id="publicStatus">Connected</strong>
+          </div>
+          <div>
+            <span class="metric">Instructor</span>
+            <strong id="instructorStatus">Detected</strong>
+          </div>
+          <div>
+            <span class="metric">Server</span>
+            <strong>localhost:8123</strong>
+          </div>
+        </article>
+      </section>
+
+      <section id="materials" class="panel">
+        <div class="panel-heading">
+          <span class="status live">Library</span>
+          <span>Materials Console</span>
+        </div>
+        <div class="console-head">
+          <div>
+            <h2>Review artifacts without folder hunting</h2>
+            <p>Filter public and private course materials by module, lesson, and artifact type, then open the file or preview from here.</p>
+          </div>
+          <button data-action="refresh-materials">Refresh</button>
+        </div>
+        <div class="filters">
+          <label>
+            Public or private
+            <select id="filterVisibility">
+              <option value="all">All materials</option>
+            </select>
+          </label>
+          <label>
+            Module
+            <select id="filterModule">
+              <option value="all">All modules</option>
+            </select>
+          </label>
+          <label>
+            Lesson
+            <select id="filterLesson">
+              <option value="all">All lessons</option>
+            </select>
+          </label>
+          <label>
+            Type
+            <select id="filterType">
+              <option value="all">All types</option>
+            </select>
+          </label>
+        </div>
+        <div class="materials-summary" id="materialsSummary">Loading materials...</div>
+        <div class="materials-list" id="materialsList" aria-live="polite"></div>
+      </section>
+
+      <section id="grading" class="panel">
+        <div class="panel-heading">
+          <span class="status draft">MVP</span>
+          <span>Grading Console</span>
+        </div>
+        <div class="split">
+          <div>
+            <h2>Run a controlled grading workflow</h2>
+            <p>Next step: connect this form to your actual grading scripts. For now it confirms the server can accept a grading request safely.</p>
+            <label>
+              Assignment
+              <select id="assignment">
+                <option value="placeholder">Select grading workflow</option>
+                <option value="excel-m04">Excel M04 Homework</option>
+              </select>
+            </label>
+            <label>
+              Submissions folder
+              <input id="folderPath" value="/Users/bethanyevittsair2/Desktop" spellcheck="false">
+            </label>
+            <div class="button-row">
+              <button data-action="dry-run-grading">Dry Run</button>
+              <button data-action="open-desktop">Open Desktop</button>
+            </div>
+          </div>
+          <pre id="log" aria-live="polite">Mission log ready.</pre>
+        </div>
+      </section>
+
+      <section id="course-map" class="panel">
+        <div class="panel-heading">
+          <span class="status live">Source</span>
+          <span>Student-Facing Course Map</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>System</th>
+                <th>Location</th>
+                <th>Use</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Public BUS123 site</td>
+                <td>BUS123-Solving-Business-Problems-with-Technology</td>
+                <td>Student-facing course map and released materials</td>
+              </tr>
+              <tr>
+                <td>Instructor materials</td>
+                <td>BUS123-instructor</td>
+                <td>Private scripts, grading, planning, and unreleased files</td>
+              </tr>
+              <tr>
+                <td>Mission control</td>
+                <td>BUS123-mission-control</td>
+                <td>Private local launcher and automation surface</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="systems" class="grid-two">
+        <article class="panel">
+          <div class="panel-heading">
+            <span class="status draft">Future</span>
+            <span>Build Tools</span>
+          </div>
+          <ul class="checklist">
+            <li>Regenerate public index from course-map.json</li>
+            <li>Validate public links and released material paths</li>
+            <li>Scan public repo for instructor-only file names</li>
+            <li>Open today’s teaching bundle in one click</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <div class="panel-heading">
+            <span class="status draft">Future</span>
+            <span>Instructor Site</span>
+          </div>
+          <ul class="checklist">
+            <li>Private module dashboard</li>
+            <li>Canvas upload checklist</li>
+            <li>Assignment grading history</li>
+            <li>Prep notes and lesson readiness flags</li>
+          </ul>
+        </article>
+      </section>
+    </section>
+  </main>
+  <script src="assets/mission-control.js?v=canvas-link-1"></script>
+</body>
+</html>
