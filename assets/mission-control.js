@@ -4,6 +4,17 @@ const materialState = {
   items: [],
   filtersReady: false
 };
+const instructorState = {
+  dashboard: null,
+  currentLessonId: "",
+  currentFolderId: "",
+  todayFolderId: "",
+  selectedLessonId: "",
+  lessons: []
+};
+const gradingState = {
+  activities: []
+};
 
 const actions = {
   "open-canvas": { kind: "navigate", url: "https://endicott.instructure.com/courses/58218" },
@@ -15,8 +26,38 @@ const actions = {
   "open-project-instructions": { kind: "navigate", url: "https://docs.google.com/document/d/1OxAbv_Hpn7N8xT3Aw7YylfGPatpvmKLI4SZGk4_0m38/edit?usp=drivesdk" },
   "open-desktop": { kind: "open", target: "desktop" },
   "dry-run-grading": { kind: "grading" },
-  "refresh-materials": { kind: "refreshMaterials" }
+  "run-grading": { kind: "grading" },
+  "refresh-materials": { kind: "refreshMaterials" },
+  "refreshInstructor": { kind: "refreshInstructor" },
+  "savePrepNotes": { kind: "savePrepNotes" },
+  "openCurrentInstructorFolder": { kind: "openInstructorFolder" },
+  "openTodayInstructorFolder": { kind: "openTodayInstructorFolder" }
 };
+
+function setActiveView(viewId) {
+  const fallback = "today";
+  const target = document.querySelector(`#${viewId}`) ? viewId : fallback;
+  document.querySelectorAll("[data-view-link]").forEach((link) => {
+    link.classList.toggle("active", link.dataset.viewLink === target);
+  });
+  document.querySelectorAll(".view").forEach((view) => {
+    view.classList.toggle("active-view", view.id === target);
+  });
+  if (window.location.hash !== `#${target}`) history.replaceState(null, "", `#${target}`);
+}
+
+function setupViews() {
+  document.querySelectorAll("[data-view-link], [data-view-target]").forEach((control) => {
+    control.addEventListener("click", (event) => {
+      const viewId = control.dataset.viewLink || control.dataset.viewTarget;
+      if (!viewId) return;
+      event.preventDefault();
+      setActiveView(viewId);
+    });
+  });
+
+  setActiveView(window.location.hash.replace("#", "") || "today");
+}
 
 function writeLog(message) {
   const timestamp = new Date().toLocaleTimeString();
@@ -52,8 +93,37 @@ async function getJson(url) {
 
 function labelFor(value) {
   return value
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    ? value
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "";
+}
+
+function prepStorageKey(lessonId) {
+  return `bus123-prep:${lessonId || "unassigned"}`;
+}
+
+function getPrepState(lessonId) {
+  try {
+    return JSON.parse(localStorage.getItem(prepStorageKey(lessonId))) || {};
+  } catch {
+    return {};
+  }
+}
+
+function savePrepState(lessonId, state) {
+  localStorage.setItem(prepStorageKey(lessonId), JSON.stringify(state));
+}
+
+function createStatusPill(label, state = "type") {
+  const pill = document.createElement("span");
+  pill.className = `pill ${state}`;
+  pill.textContent = label;
+  return pill;
+}
+
+function flattenedLessons(dashboard) {
+  return dashboard.modules.flatMap((module) => module.lessons.map((lesson) => ({ ...lesson, moduleId: module.id })));
 }
 
 function populateSelect(select, values, allLabel) {
@@ -68,12 +138,52 @@ function populateSelect(select, values, allLabel) {
   select.value = [...select.options].some((option) => option.value === current) ? current : "all";
 }
 
+function activityOutputPath(activityId) {
+  return `/Users/bethanyevittsair2/Desktop/BUS123 Grades/${activityId || "selected-activity"}`;
+}
+
+function renderGradingActivities() {
+  const select = document.querySelector("#gradingActivity");
+  const output = document.querySelector("#gradeOutputPath");
+  const summary = document.querySelector("#gradingSummary");
+  if (!select || !summary) return;
+
+  select.innerHTML = "";
+  if (!gradingState.activities.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No private graders found";
+    select.append(option);
+    summary.textContent = "No private grading rubrics were found in BUS123-instructor/grading/graders.";
+    return;
+  }
+
+  gradingState.activities.forEach((activity) => {
+    const option = document.createElement("option");
+    option.value = activity.id;
+    option.textContent = `${activity.id} - ${activity.title} (${activity.pointsPossible} pts)`;
+    select.append(option);
+  });
+
+  if (output && !output.dataset.touched) output.value = activityOutputPath(select.value);
+  summary.textContent = `${gradingState.activities.length} private grader${gradingState.activities.length === 1 ? "" : "s"} available.`;
+}
+
+async function loadGradingActivities() {
+  const summary = document.querySelector("#gradingSummary");
+  if (summary) summary.textContent = "Loading private grading workflows...";
+  const data = await getJson("/api/grading/activities");
+  gradingState.activities = data.activities || [];
+  renderGradingActivities();
+}
+
 function renderMaterials() {
   const list = document.querySelector("#materialsList");
   const summary = document.querySelector("#materialsSummary");
   if (!list || !summary) return;
 
   const visibility = document.querySelector("#filterVisibility").value;
+  const track = document.querySelector("#filterTrack").value;
   const module = document.querySelector("#filterModule").value;
   const lesson = document.querySelector("#filterLesson").value;
   const type = document.querySelector("#filterType").value;
@@ -81,6 +191,7 @@ function renderMaterials() {
   const filtered = materialState.items
     .filter((item) => {
       return (visibility === "all" || item.visibility === visibility)
+        && (track === "all" || item.track === track)
         && (module === "all" || item.module === module)
         && (lesson === "all" || item.lesson === lesson)
         && (type === "all" || item.type === type);
@@ -138,7 +249,7 @@ function renderMaterials() {
 }
 
 function setupMaterialFilters() {
-  const filterIds = ["filterVisibility", "filterModule", "filterLesson", "filterType"];
+  const filterIds = ["filterVisibility", "filterTrack", "filterModule", "filterLesson", "filterType"];
   filterIds.forEach((id) => {
     document.querySelector(`#${id}`).addEventListener("change", renderMaterials);
   });
@@ -153,6 +264,7 @@ async function loadMaterials() {
   materialState.items = data.materials;
 
   populateSelect(document.querySelector("#filterVisibility"), [...new Set(data.materials.map((item) => item.visibility))].sort(), "All materials");
+  populateSelect(document.querySelector("#filterTrack"), [...new Set(data.materials.map((item) => item.track))].sort(), "All sections");
   populateSelect(document.querySelector("#filterModule"), [...new Set(data.materials.map((item) => item.module))].sort(), "All modules");
   populateSelect(document.querySelector("#filterLesson"), [...new Set(data.materials.map((item) => item.lesson))].sort(), "All lessons");
   populateSelect(document.querySelector("#filterType"), [...new Set(data.materials.map((item) => item.type))].sort(), "All types");
@@ -163,6 +275,227 @@ async function loadMaterials() {
   }
 
   renderMaterials();
+}
+
+function renderCheckItems(container, items) {
+  container.innerHTML = "";
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "check-item";
+    empty.textContent = "No matching workflow items yet.";
+    container.append(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement("article");
+    row.className = "check-item";
+    const title = document.createElement("strong");
+    title.textContent = item.title;
+    const meta = document.createElement("span");
+    meta.textContent = item.meta;
+    row.append(createStatusPill(item.status, item.state), title, meta);
+    container.append(row);
+  });
+}
+
+function summarizeLessonPrivateArtifacts(lesson) {
+  return Object.entries(lesson.privateArtifactsByType || {})
+    .map(([type, count]) => `${count} ${labelFor(type)}`)
+    .join(", ");
+}
+
+function renderCurrentPrep(dashboard) {
+  const lesson = instructorState.lessons.find((item) => item.id === instructorState.selectedLessonId)
+    || dashboard.currentLesson
+    || instructorState.lessons[0];
+  const title = document.querySelector("#currentLessonTitle");
+  const meta = document.querySelector("#currentLessonMeta");
+  const prepStatus = document.querySelector("#prepStatus");
+  const prepNotes = document.querySelector("#prepNotes");
+  const openFolderButton = document.querySelector("#openCurrentInstructorFolder");
+
+  if (!lesson) {
+    instructorState.currentLessonId = "";
+    instructorState.currentFolderId = "";
+    title.textContent = "No current lesson selected";
+    meta.textContent = "Set course.currentLessonId in the public course map to use current-lesson prep.";
+    prepStatus.value = "not-started";
+    prepNotes.value = "";
+    openFolderButton.disabled = true;
+    return;
+  }
+
+  const prep = getPrepState(lesson.id);
+  instructorState.currentLessonId = lesson.id;
+  instructorState.currentFolderId = lesson.instructorFolderId || "";
+  title.textContent = lesson.title;
+  meta.textContent = `${lesson.key} · ${lesson.status} · ${lesson.caseStudy || "No case study"} · ${lesson.skillFocus.join(", ")}`;
+  prepStatus.value = prep.status || "not-started";
+  prepNotes.value = prep.notes || "";
+  openFolderButton.disabled = !lesson.instructorFolderId;
+}
+
+function renderModuleDashboard(dashboard) {
+  const container = document.querySelector("#moduleDashboard");
+  container.innerHTML = "";
+
+  dashboard.modules.forEach((module) => {
+    const group = document.createElement("section");
+    group.className = "module-group";
+    const heading = document.createElement("h3");
+    heading.textContent = `${module.track} ${module.module}`;
+    group.append(heading);
+
+    module.lessons.forEach((lesson) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "lesson-picker";
+      row.dataset.lessonId = lesson.id;
+      row.classList.toggle("selected", lesson.id === instructorState.selectedLessonId);
+
+      const details = document.createElement("div");
+      const lessonTitle = document.createElement("strong");
+      lessonTitle.textContent = lesson.title;
+      const lessonMeta = document.createElement("span");
+      lessonMeta.textContent = `${lesson.key} · ${lesson.privateArtifactCount} private`;
+      details.append(lessonTitle, lessonMeta);
+
+      const flags = document.createElement("div");
+      flags.className = "lesson-flags";
+      if (lesson.isCurrent) flags.append(createStatusPill("Current", "current"));
+      if (lesson.missingPublic.length || !lesson.instructorFolderExists) flags.append(createStatusPill("Review", "review"));
+      else flags.append(createStatusPill("Ready", "ready"));
+
+      row.append(details, flags);
+      group.append(row);
+    });
+
+    container.append(group);
+  });
+}
+
+function renderToday(dashboard) {
+  const lessons = instructorState.lessons;
+  const current = dashboard.currentLesson || lessons[0];
+  const currentIndex = lessons.findIndex((lesson) => lesson.id === current?.id);
+  const prep = getPrepState(current?.id);
+  const title = document.querySelector("#todayLessonTitle");
+  const key = document.querySelector("#todayLessonKey");
+  const meta = document.querySelector("#todayLessonMeta");
+  const openFolder = document.querySelector("#todayOpenInstructorFolder");
+  const alerts = document.querySelector("#todayAlerts");
+  const nextLessons = document.querySelector("#nextLessons");
+
+  if (!current) return;
+
+  title.textContent = current.title;
+  key.textContent = current.key;
+  meta.textContent = `${current.status} · ${prep.status ? labelFor(prep.status) : "Prep not started"} · ${current.caseStudy || "No case study"} · ${current.skillFocus.join(", ")}`;
+  instructorState.todayFolderId = current.instructorFolderId || "";
+  openFolder.disabled = !current.instructorFolderId;
+
+  const alertItems = [
+    current.missingPublic.length ? `${current.missingPublic.length} public material issue${current.missingPublic.length === 1 ? "" : "s"} for the current lesson.` : "",
+    current.instructorFolderExists ? "" : "Current lesson has no detected instructor folder.",
+    current.privateArtifactsByType.qti ? "Canvas package is available for the current lesson." : "No current-lesson QTI package detected.",
+    prep.notes ? "Prep notes are saved locally." : "No prep notes saved yet."
+  ].filter(Boolean);
+
+  alerts.innerHTML = "";
+  alertItems.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "alert-item";
+    row.textContent = item;
+    alerts.append(row);
+  });
+
+  nextLessons.innerHTML = "";
+  lessons.slice(Math.max(currentIndex + 1, 0), Math.max(currentIndex + 4, 3)).forEach((lesson) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "next-lesson";
+    card.dataset.lessonId = lesson.id;
+    card.dataset.viewTarget = "instructor";
+    card.innerHTML = `<strong>${lesson.title}</strong><span>${lesson.key} · ${lesson.status}</span>`;
+    nextLessons.append(card);
+  });
+}
+
+function renderInstructorDashboard(dashboard) {
+  instructorState.dashboard = dashboard;
+  instructorState.lessons = flattenedLessons(dashboard);
+  if (!instructorState.selectedLessonId) {
+    instructorState.selectedLessonId = dashboard.currentLesson?.id || instructorState.lessons[0]?.id || "";
+  }
+
+  const summary = document.querySelector("#instructorSummary");
+  summary.innerHTML = "";
+  [
+    ["Modules", dashboard.totals.modules],
+    ["Lessons", dashboard.totals.lessons],
+    ["Needs review", dashboard.totals.needsReview],
+    ["Private artifacts", dashboard.totals.privateArtifacts]
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    const metric = document.createElement("span");
+    metric.className = "metric";
+    metric.textContent = label;
+    const count = document.createElement("strong");
+    count.textContent = value;
+    item.append(metric, count);
+    summary.append(item);
+  });
+
+  renderCurrentPrep(dashboard);
+
+  const canvasItems = dashboard.modules
+    .flatMap((module) => module.lessons)
+    .filter((lesson) => lesson.privateArtifactsByType.qti || lesson.status === "Current")
+    .map((lesson) => ({
+      title: lesson.title,
+      meta: `${lesson.key} · ${lesson.privateArtifactsByType.qti || 0} QTI package${lesson.privateArtifactsByType.qti === 1 ? "" : "s"}`,
+      status: lesson.privateArtifactsByType.qti ? "Package ready" : "Needs review",
+      state: lesson.privateArtifactsByType.qti ? "ready" : "review"
+    }));
+  renderCheckItems(document.querySelector("#canvasChecklist"), canvasItems);
+
+  const gradingItems = dashboard.modules
+    .flatMap((module) => module.lessons)
+    .filter((lesson) => lesson.privateArtifactsByType["activity-key"] || lesson.privateArtifactsByType.solution)
+    .map((lesson) => ({
+      title: lesson.title,
+      meta: `${lesson.key} · ${summarizeLessonPrivateArtifacts(lesson)}`,
+      status: "Instructor files",
+      state: "ready"
+    }));
+  renderCheckItems(document.querySelector("#gradingQueue"), gradingItems);
+
+  renderModuleDashboard(dashboard);
+  renderToday(dashboard);
+}
+
+async function loadInstructorDashboard() {
+  const summary = document.querySelector("#instructorSummary");
+  if (!summary) return;
+
+  summary.textContent = "Loading instructor dashboard...";
+  const dashboard = await getJson("/api/instructor/dashboard");
+  renderInstructorDashboard(dashboard);
+}
+
+function renderBuildToolResult(result) {
+  const output = document.querySelector("#buildToolResult");
+  if (!output) return;
+
+  const lines = [
+    result.title,
+    result.summary,
+    "",
+    ...(result.details || [])
+  ];
+  output.textContent = lines.join("\n");
+  output.dataset.status = result.status;
 }
 
 document.addEventListener("click", async (event) => {
@@ -185,18 +518,108 @@ document.addEventListener("click", async (event) => {
     }
 
     if (action.kind === "grading") {
-      const assignment = document.querySelector("#assignment").value;
-      const folderPath = document.querySelector("#folderPath").value;
-      const result = await postJson("/api/grading/dry-run", { assignment, folderPath });
-      writeLog(result.message);
+      const activityId = document.querySelector("#gradingActivity").value;
+      const submissionsPath = document.querySelector("#submissionsPath").value;
+      const outputPath = document.querySelector("#gradeOutputPath").value;
+      button.disabled = true;
+      button.textContent = "Running...";
+      const result = await postJson("/api/grading/run", { activityId, submissionsPath, outputPath });
+      const summary = result.summary;
+      document.querySelector("#gradingSummary").textContent = [
+        `${summary.count} submission${summary.count === 1 ? "" : "s"} graded.`,
+        `Average: ${summary.averagePercent}%.`,
+        summary.reviewCount ? `${summary.reviewCount} flagged for manual review.` : "No manual review flags.",
+        `Scores: ${summary.reports.scores}`
+      ].join(" ");
+      writeLog(`${result.message} Scores report: ${summary.reports.scores}`);
     }
 
     if (action.kind === "refreshMaterials") {
       await loadMaterials();
       writeLog("Materials console refreshed.");
     }
+
+    if (action.kind === "refreshInstructor") {
+      await loadInstructorDashboard();
+      writeLog("Instructor dashboard refreshed.");
+    }
+
+    if (action.kind === "savePrepNotes") {
+      savePrepState(instructorState.currentLessonId, {
+        status: document.querySelector("#prepStatus").value,
+        notes: document.querySelector("#prepNotes").value,
+        updatedAt: new Date().toISOString()
+      });
+      writeLog("Prep notes saved locally.");
+    }
+
+    if (action.kind === "openInstructorFolder") {
+      const result = await postJson("/api/instructor/folder/open", { folderId: instructorState.currentFolderId });
+      writeLog(result.message);
+    }
+
+    if (action.kind === "openTodayInstructorFolder") {
+      const result = await postJson("/api/instructor/folder/open", { folderId: instructorState.todayFolderId });
+      writeLog(result.message);
+    }
   } catch (error) {
     writeLog(`Error: ${error.message}. Make sure Mission Control is running at http://localhost:8123/.`);
+  } finally {
+    if (action.kind === "grading") {
+      button.disabled = false;
+      button.textContent = "Run Grader";
+    }
+  }
+});
+
+document.querySelector("#gradingActivity")?.addEventListener("change", (event) => {
+  const output = document.querySelector("#gradeOutputPath");
+  if (output && !output.dataset.touched) output.value = activityOutputPath(event.target.value);
+});
+
+document.querySelector("#gradeOutputPath")?.addEventListener("input", (event) => {
+  event.target.dataset.touched = "true";
+});
+
+document.addEventListener("click", (event) => {
+  const picker = event.target.closest("[data-lesson-id]");
+  if (!picker) return;
+  instructorState.selectedLessonId = picker.dataset.lessonId;
+  if (picker.dataset.viewTarget) setActiveView(picker.dataset.viewTarget);
+  if (instructorState.dashboard) renderInstructorDashboard(instructorState.dashboard);
+});
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-build-tool]");
+  if (!button) return;
+
+  const buttons = [...document.querySelectorAll("button[data-build-tool]")];
+  const output = document.querySelector("#buildToolResult");
+  buttons.forEach((item) => {
+    item.disabled = true;
+  });
+  if (output) {
+    output.textContent = `Running ${button.textContent}...`;
+    output.dataset.status = "running";
+  }
+
+  try {
+    const result = await postJson("/api/tools/run", { tool: button.dataset.buildTool });
+    renderBuildToolResult(result);
+    writeLog(result.summary);
+    if (button.dataset.buildTool === "regenerate-index") await loadMaterials();
+  } catch (error) {
+    renderBuildToolResult({
+      title: button.textContent,
+      summary: `Error: ${error.message}`,
+      status: "error",
+      details: []
+    });
+    writeLog(`Build tool error: ${error.message}.`);
+  } finally {
+    buttons.forEach((item) => {
+      item.disabled = false;
+    });
   }
 });
 
@@ -217,3 +640,17 @@ loadMaterials().catch((error) => {
   const summary = document.querySelector("#materialsSummary");
   if (summary) summary.textContent = "Materials console could not load.";
 });
+
+loadInstructorDashboard().catch((error) => {
+  writeLog(`Instructor dashboard error: ${error.message}.`);
+  const summary = document.querySelector("#instructorSummary");
+  if (summary) summary.textContent = "Instructor dashboard could not load.";
+});
+
+loadGradingActivities().catch((error) => {
+  writeLog(`Grading workflow error: ${error.message}.`);
+  const summary = document.querySelector("#gradingSummary");
+  if (summary) summary.textContent = "Private grading workflows could not load.";
+});
+
+setupViews();

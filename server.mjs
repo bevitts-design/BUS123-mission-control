@@ -1,21 +1,21 @@
 import { createServer } from "node:http";
-import { readFile, readdir, stat } from "node:fs/promises";
-import { basename, extname, join, normalize, relative, sep } from "node:path";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url"; // Change #1: Added import for URL to path conversions
+import { mkdir, readFile, readdir, stat } from "node:fs/promises";
+import { basename, dirname, extname, join, normalize, relative, sep } from "node:path";
+import { execFile, spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const PORT = 8123;
 const PUBLIC_PORT = 8124;
-// Change #1: Using fileURLToPath to safely calculate the root directory path across different OS environments
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 
-// Change #2: Resolved user directory dynamically so it's not permanently frozen to a single profile string
 const HOME_DIR = process.env.HOME || process.env.USERPROFILE || "/Users/bethanyevittsair2";
+const BUNDLED_PYTHON = join(HOME_DIR, ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3");
 
 const targets = {
   publicSite: "http://localhost:8124/",
   publicRepo: join(HOME_DIR, "Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology"),
   instructorRepo: join(HOME_DIR, "Documents/GitHub/BUS123-instructor"),
+  instructorGrading: join(HOME_DIR, "Documents/GitHub/BUS123-instructor/grading"),
   courseMap: join(HOME_DIR, "Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology/course-map.json"),
   desktop: join(HOME_DIR, "Desktop"),
   brandTemplate: "https://drive.google.com/file/d/1xty2pm0baSDRKKT1ncCyrVWJrD29cDfm",
@@ -25,6 +25,13 @@ const targets = {
 const materialRoots = {
   public: targets.publicRepo,
   private: targets.instructorRepo
+};
+
+const buildTools = {
+  "validate-public": { script: "validate-public-materials.mjs" },
+  "regenerate-index": { script: "regenerate-public-index.mjs" },
+  "lesson-readiness": { script: "lesson-readiness.mjs" },
+  "open-teaching-bundle": { script: "open-teaching-bundle.mjs", openTargets: true }
 };
 
 const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip"]);
@@ -172,7 +179,122 @@ async function getMaterials() {
       .localeCompare(`${b.visibility}-${b.track}-${b.module}-${b.lesson}-${b.type}-${b.name}`));
 }
 
-// Change #3 (Part A): Added logic handler function to explicitly check connection telemetry paths
+async function readCourseMap() {
+  return JSON.parse(await readFile(targets.courseMap, "utf8"));
+}
+
+function lessonKey(lesson) {
+  return [
+    String(lesson.track || "").toUpperCase(),
+    lesson.module || "unassigned",
+    lesson.lesson || "unassigned"
+  ].join("/");
+}
+
+function isReleased(status) {
+  return !/not released|coming soon|in progress/i.test(status || "");
+}
+
+function summarizeArtifacts(items) {
+  return items.reduce((summary, item) => {
+    summary[item.type] = (summary[item.type] || 0) + 1;
+    return summary;
+  }, {});
+}
+
+async function getInstructorDashboard() {
+  const courseMap = await readCourseMap();
+  const materials = await getMaterials();
+  const tracksById = new Map((courseMap.tracks ?? []).map((track) => [track.id, track]));
+  const currentLessonId = courseMap.course?.currentLessonId || "";
+  const modules = new Map();
+
+  for (const lesson of courseMap.lessons ?? []) {
+    const track = tracksById.get(lesson.track) || {};
+    const trackFolder = track.folder || String(lesson.track || "").toUpperCase();
+    const moduleKey = `${trackFolder}/${lesson.module || "unassigned"}`;
+    const publicMaterials = lesson.materials ?? [];
+    const lessonValue = String(lesson.lesson || "").toLowerCase();
+    const privateArtifacts = materials.filter((item) => {
+      return item.visibility === "private"
+        && item.track === trackFolder
+        && item.module.toUpperCase() === String(lesson.module || "").toUpperCase()
+        && (item.lesson === lessonValue || item.lesson === "unassigned");
+    });
+    const missingPublic = [];
+
+    for (const material of publicMaterials) {
+      const materialPath = join(targets.publicRepo, material.path || "");
+      if (!material.path || !isPathInside(materialPath, targets.publicRepo)) {
+        missingPublic.push(material.type || "Material");
+        continue;
+      }
+
+      try {
+        const materialStat = await stat(materialPath);
+        if (!materialStat.isFile()) missingPublic.push(material.type || basename(material.path));
+      } catch {
+        missingPublic.push(material.type || basename(material.path || "material"));
+      }
+    }
+
+    const instructorFolder = join(targets.instructorRepo, trackFolder, lesson.module || "");
+    let instructorFolderExists = false;
+    try {
+      instructorFolderExists = (await stat(instructorFolder)).isDirectory();
+    } catch {}
+
+    const dashboardLesson = {
+      id: lesson.id,
+      key: lessonKey(lesson),
+      title: lesson.title || lesson.id,
+      status: lesson.status || "Unspecified",
+      isCurrent: lesson.id === currentLessonId,
+      isReleased: isReleased(lesson.status),
+      caseStudy: lesson.caseStudy,
+      skillFocus: lesson.skillFocus ?? [],
+      materialCount: publicMaterials.length,
+      missingPublic,
+      privateArtifactCount: privateArtifacts.length,
+      privateArtifactsByType: summarizeArtifacts(privateArtifacts),
+      instructorFolderExists,
+      instructorFolderId: instructorFolderExists ? Buffer.from(instructorFolder).toString("base64url") : ""
+    };
+
+    if (!modules.has(moduleKey)) {
+      modules.set(moduleKey, {
+        id: moduleKey,
+        track: track.label || trackFolder,
+        trackFolder,
+        module: lesson.module || "Unassigned",
+        lessons: [],
+        counts: { ready: 0, review: 0, current: 0 }
+      });
+    }
+
+    const module = modules.get(moduleKey);
+    module.lessons.push(dashboardLesson);
+    if (dashboardLesson.isCurrent) module.counts.current += 1;
+    if (dashboardLesson.missingPublic.length || !dashboardLesson.instructorFolderExists) module.counts.review += 1;
+    else module.counts.ready += 1;
+  }
+
+  const moduleList = [...modules.values()].sort((a, b) => a.id.localeCompare(b.id));
+  const lessons = moduleList.flatMap((module) => module.lessons);
+  return {
+    course: courseMap.course,
+    currentLesson: lessons.find((lesson) => lesson.isCurrent) || null,
+    totals: {
+      modules: moduleList.length,
+      lessons: lessons.length,
+      current: lessons.filter((lesson) => lesson.isCurrent).length,
+      needsReview: lessons.filter((lesson) => lesson.missingPublic.length || !lesson.instructorFolderExists).length,
+      privateArtifacts: materials.filter((item) => item.visibility === "private").length
+    },
+    modules: moduleList
+  };
+}
+
 async function handleStatus(response) {
   let publicConnected = false;
   let instructorDetected = false;
@@ -190,6 +312,31 @@ async function handleStatus(response) {
   sendJson(response, 200, { publicConnected, instructorDetected });
 }
 
+async function handleInstructorDashboard(response) {
+  sendJson(response, 200, await getInstructorDashboard());
+}
+
+async function handleInstructorFolderOpen(request, response) {
+  const body = await readRequestJson(request);
+  const folderPath = Buffer.from(String(body.folderId || ""), "base64url").toString("utf8");
+
+  if (!folderPath || !isPathInside(folderPath, targets.instructorRepo)) {
+    sendJson(response, 403, { error: "Folder is outside the instructor repository." });
+    return;
+  }
+
+  try {
+    const folderStat = await stat(folderPath);
+    if (!folderStat.isDirectory()) throw new Error("Not a folder");
+  } catch {
+    sendJson(response, 404, { error: "Instructor folder not found." });
+    return;
+  }
+
+  await openTarget(folderPath);
+  sendJson(response, 200, { message: `Opened instructor folder: ${relative(targets.instructorRepo, folderPath) || "root"}.` });
+}
+
 async function handleOpen(request, response) {
   const body = await readRequestJson(request);
   const target = targets[body.target];
@@ -202,18 +349,191 @@ async function handleOpen(request, response) {
   sendJson(response, 200, { message: `Opened ${body.target}.` });
 }
 
-async function handleGradingDryRun(request, response) {
-  const body = await readRequestJson(request);
-  const folderPath = String(body.folderPath || "");
-  const assignment = String(body.assignment || "placeholder");
+function safeActivityId(value) {
+  const activityId = String(value || "");
+  return /^[a-z0-9][a-z0-9-]*$/.test(activityId) ? activityId : "";
+}
 
-  if (!folderPath.startsWith(targets.desktop)) {
-    sendJson(response, 400, { error: "For now, submissions must be inside the Desktop folder." });
+async function getGradingActivities() {
+  const gradersRoot = join(targets.instructorGrading, "graders");
+  const activities = [];
+
+  try {
+    const entries = await readdir(gradersRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const activityId = safeActivityId(entry.name);
+      if (!activityId) continue;
+
+      const rubricPath = join(gradersRoot, activityId, "rubric.json");
+      try {
+        const rubric = JSON.parse(await readFile(rubricPath, "utf8"));
+        activities.push({
+          id: activityId,
+          title: rubric.title || activityId,
+          pointsPossible: rubric.points_possible || 0,
+          rubricPath: relative(targets.instructorRepo, rubricPath)
+        });
+      } catch {}
+    }
+  } catch {}
+
+  return activities.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+async function handleGradingActivities(response) {
+  sendJson(response, 200, { activities: await getGradingActivities() });
+}
+
+function defaultGradeOutputPath(activityId) {
+  return join(targets.desktop, "BUS123 Grades", activityId);
+}
+
+function resolveUserPath(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw === "~") return HOME_DIR;
+  if (raw.startsWith("~/")) return join(HOME_DIR, raw.slice(2));
+  return normalize(raw);
+}
+
+function validateSubmissionFolder(folderPath) {
+  if (!folderPath || !isPathInside(folderPath, targets.desktop)) {
+    return "Submissions must be in a folder on the Desktop.";
+  }
+  return "";
+}
+
+function validateOutputFolder(folderPath) {
+  const defaultRoot = join(targets.desktop, "BUS123 Grades");
+  const privateOutputRoot = join(targets.instructorGrading, "output");
+  if (!folderPath || (!isPathInside(folderPath, defaultRoot) && !isPathInside(folderPath, privateOutputRoot))) {
+    return "Output must be inside Desktop/BUS123 Grades or the private grading/output folder.";
+  }
+  return "";
+}
+
+function runGradingScript({ activityId, submissionsPath, outputPath }) {
+  return new Promise((resolve, reject) => {
+    const scriptPath = join(targets.instructorGrading, "scripts", "grade_activity.py");
+    execFile(BUNDLED_PYTHON, [
+      scriptPath,
+      "--activity", activityId,
+      "--submissions", submissionsPath,
+      "--out", outputPath
+    ], { cwd: targets.instructorRepo, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr.trim() || error.message));
+        return;
+      }
+
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
+    });
+  });
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    const next = line[index + 1];
+    if (character === "\"" && inQuotes && next === "\"") {
+      current += "\"";
+      index += 1;
+    } else if (character === "\"") {
+      inQuotes = !inQuotes;
+    } else if (character === "," && !inQuotes) {
+      values.push(current);
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+
+  values.push(current);
+  return values;
+}
+
+async function summarizeScores(outputPath) {
+  const scoresPath = join(outputPath, "scores.csv");
+  const feedbackPath = join(outputPath, "feedback.csv");
+  const auditPath = join(outputPath, "audit.json");
+  const text = await readFile(scoresPath, "utf8");
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  const headers = parseCsvLine(lines[0] || "");
+  const rows = lines.slice(1).map((line) => {
+    const values = parseCsvLine(line);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] || ""]));
+  });
+
+  const count = rows.length;
+  const reviewCount = rows.filter((row) => row.manual_review === "yes").length;
+  const average = count
+    ? rows.reduce((sum, row) => sum + Number(row.percent || 0), 0) / count
+    : 0;
+
+  return {
+    count,
+    reviewCount,
+    averagePercent: Number(average.toFixed(1)),
+    reports: {
+      scores: scoresPath,
+      feedback: feedbackPath,
+      audit: auditPath
+    }
+  };
+}
+
+async function handleGradingRun(request, response) {
+  const body = await readRequestJson(request);
+  const activityId = safeActivityId(body.activityId);
+  if (!activityId) {
+    sendJson(response, 400, { error: "Choose a valid grading activity." });
     return;
   }
 
+  const rubricPath = join(targets.instructorGrading, "graders", activityId, "rubric.json");
+  if (!isPathInside(rubricPath, join(targets.instructorGrading, "graders"))) {
+    sendJson(response, 403, { error: "Grading activity is outside the private graders folder." });
+    return;
+  }
+
+  try {
+    const rubricStat = await stat(rubricPath);
+    if (!rubricStat.isFile()) throw new Error("Missing rubric");
+  } catch {
+    sendJson(response, 404, { error: "Private grading rubric not found." });
+    return;
+  }
+
+  const submissionsPath = resolveUserPath(body.submissionsPath);
+  const outputPath = resolveUserPath(body.outputPath) || defaultGradeOutputPath(activityId);
+  const submissionError = validateSubmissionFolder(submissionsPath);
+  const outputError = validateOutputFolder(outputPath);
+  if (submissionError || outputError) {
+    sendJson(response, 400, { error: submissionError || outputError });
+    return;
+  }
+
+  try {
+    const submissionsStat = await stat(submissionsPath);
+    if (!submissionsStat.isDirectory()) throw new Error("Not a directory");
+  } catch {
+    sendJson(response, 404, { error: "Submissions folder not found." });
+    return;
+  }
+
+  await mkdir(dirname(outputPath), { recursive: true });
+  const run = await runGradingScript({ activityId, submissionsPath, outputPath });
+  const summary = await summarizeScores(outputPath);
+
   sendJson(response, 200, {
-    message: `Dry run ready for ${assignment}. Folder accepted: ${folderPath}. Next step is wiring this to the real grading script.`
+    activityId,
+    message: run.stdout || `Graded ${summary.count} submission(s).`,
+    summary
   });
 }
 
@@ -242,6 +562,46 @@ async function handleMaterialOpen(request, response) {
 
   await openTarget(material.url || material.absolutePath);
   sendJson(response, 200, { message: `Opened ${material.name}.` });
+}
+
+function runBuildToolScript(scriptName) {
+  return new Promise((resolve, reject) => {
+    const scriptPath = join(ROOT, "scripts", scriptName);
+    execFile(process.execPath, [
+      scriptPath,
+      "--public-root", targets.publicRepo,
+      "--instructor-root", targets.instructorRepo
+    ], { cwd: ROOT, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr.trim() || error.message));
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(stdout));
+      } catch {
+        reject(new Error(`Build tool returned invalid output: ${stdout.trim() || stderr.trim() || "no output"}`));
+      }
+    });
+  });
+}
+
+async function handleBuildToolRun(request, response) {
+  const body = await readRequestJson(request);
+  const tool = buildTools[body.tool];
+  if (!tool) {
+    sendJson(response, 400, { error: "Unknown build tool." });
+    return;
+  }
+
+  const result = await runBuildToolScript(tool.script);
+  if (tool.openTargets && result.status !== "error") {
+    for (const target of result.openTargets ?? []) {
+      await openTarget(target.path);
+    }
+  }
+
+  sendJson(response, 200, result);
 }
 
 async function serveStatic(request, response) {
@@ -306,9 +666,13 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    // Change #3 (Part B): Registered the status check API endpoint to interface with UI hooks
     if (request.method === "GET" && request.url === "/api/status") {
       await handleStatus(response);
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/api/instructor/dashboard") {
+      await handleInstructorDashboard(response);
       return;
     }
 
@@ -318,7 +682,17 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && request.url === "/api/grading/dry-run") {
-      await handleGradingDryRun(request, response);
+      await handleGradingRun(request, response);
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/api/grading/activities") {
+      await handleGradingActivities(response);
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/grading/run") {
+      await handleGradingRun(request, response);
       return;
     }
 
@@ -329,6 +703,16 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && request.url === "/api/materials/open") {
       await handleMaterialOpen(request, response);
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/instructor/folder/open") {
+      await handleInstructorFolderOpen(request, response);
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/tools/run") {
+      await handleBuildToolRun(request, response);
       return;
     }
 

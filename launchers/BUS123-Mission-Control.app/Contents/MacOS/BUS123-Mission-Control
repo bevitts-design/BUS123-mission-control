@@ -1,8 +1,8 @@
 #!/bin/zsh
 
-MISSION_DIR="/Users/bethanyevittsair2/Documents/GitHub/BUS123-mission-control"
+MISSION_DIR="/Users/bethanyevittsair2/Documents/GitHub/BUS123-mission-control-active"
 LOG_DIR="$MISSION_DIR/logs"
-MISSION_URL="http://localhost:8123/?v=canvas-link-1"
+MISSION_URL="http://localhost:8123/?v=grading-launcher-1"
 
 mkdir -p "$LOG_DIR"
 
@@ -39,6 +39,7 @@ start_mission_control() {
 
   cd "$MISSION_DIR" || exit 1
   /usr/bin/nohup "$node_bin" server.mjs >> "$LOG_DIR/mission-control-server.log" 2>&1 </dev/null &
+  disown
 }
 
 start_mission_control

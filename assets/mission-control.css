@@ -21,13 +21,14 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, #233044 0, #111318 34rem);
+  background: #101319;
   color: var(--text);
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -43,6 +44,11 @@ button {
 
 button:hover {
   border-color: var(--blue);
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .shell {
@@ -90,7 +96,7 @@ button:hover {
 }
 
 .workspace {
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 2.5rem;
 }
 
 .topbar {
@@ -112,14 +118,15 @@ button:hover {
 
 h1,
 h2,
+h3,
 p {
   margin-top: 0;
 }
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(2rem, 5vw, 4.4rem);
-  line-height: 0.96;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
 }
 
 h2 {
@@ -133,17 +140,24 @@ p {
 }
 
 .quick-actions,
-.button-row {
+.button-row,
+.command-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
 }
 
-.hero-grid,
-.grid-two {
+.view {
+  display: none;
+}
+
+.active-view {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
   gap: 1rem;
+}
+
+.grid-two {
+  grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
 }
 
 .panel {
@@ -153,16 +167,6 @@ p {
   padding: 1.1rem;
   background: rgb(27 31 38 / 92%);
   box-shadow: var(--shadow);
-}
-
-.current {
-  min-height: 18rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  background:
-    linear-gradient(145deg, rgb(23 30 42 / 88%), rgb(32 35 42 / 96%)),
-    repeating-linear-gradient(90deg, transparent 0 2rem, rgb(255 255 255 / 4%) 2rem 2.05rem);
 }
 
 .panel-heading {
@@ -188,22 +192,126 @@ p {
   background: var(--gold);
 }
 
-.metrics {
+.today-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(19rem, 0.85fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.current-lesson-band,
+.quiet-section,
+.lesson-detail,
+.module-list,
+.view:not(#today):not(#systems) {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(25 30 38 / 86%);
+}
+
+.current-lesson-band {
+  min-height: 20rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background:
+    linear-gradient(145deg, rgb(23 30 42 / 82%), rgb(25 30 38 / 96%)),
+    linear-gradient(90deg, rgb(125 179 255 / 10%), transparent 58%);
+}
+
+.current-lesson-band h2 {
+  max-width: 48rem;
+  margin-bottom: 0.75rem;
+  font-size: clamp(2rem, 5vw, 4.8rem);
+  line-height: 1;
+}
+
+.current-lesson-band p {
+  max-width: 48rem;
+}
+
+.today-side,
+.metric-grid,
+.alert-list,
+.check-grid,
+.module-dashboard {
   display: grid;
   gap: 0.7rem;
 }
 
-.metrics div {
+.metric-grid div,
+.alert-item,
+.next-lesson,
+.instructor-summary div,
+.instructor-card,
+.module-card {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0.95rem;
-  background: var(--panel-strong);
+  background: #171d26;
 }
 
-.metrics strong {
+.metric-grid div,
+.instructor-summary div {
+  padding: 0.95rem;
+}
+
+.metric-grid strong,
+.instructor-summary strong {
   display: block;
   margin-top: 0.35rem;
   font-size: 1.25rem;
+}
+
+.alert-item {
+  padding: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.quiet-section,
+#materials,
+#instructor,
+#grading,
+#course-map {
+  padding: 1rem;
+}
+
+.section-head,
+.console-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-head {
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.next-lessons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.next-lesson {
+  min-height: 5.25rem;
+  display: grid;
+  align-content: center;
+  gap: 0.25rem;
+  padding: 0.85rem;
+  text-align: left;
+}
+
+.next-lesson span {
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .split {
@@ -220,13 +328,19 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.75rem;
   background: #111820;
   color: var(--text);
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.5;
 }
 
 pre {
@@ -271,39 +385,9 @@ th {
   line-height: 1.8;
 }
 
-@media (max-width: 860px) {
-  .shell,
-  .hero-grid,
-  .grid-two,
-  .split {
-    grid-template-columns: 1fr;
-  }
-
-  .rail {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .rail nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-
-.console-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
 .filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.8rem;
   margin: 0.8rem 0 1rem;
 }
@@ -312,6 +396,16 @@ th {
   margin-bottom: 0.8rem;
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.grading-summary {
+  margin-top: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: #151b24;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .materials-list {
@@ -373,12 +467,15 @@ th {
   font-weight: 800;
 }
 
-.pill.public {
+.pill.public,
+.pill.ready,
+.pill.current {
   background: rgb(143 216 168 / 18%);
   color: var(--green);
 }
 
-.pill.private {
+.pill.private,
+.pill.review {
   background: rgb(238 141 127 / 18%);
   color: var(--red);
 }
@@ -388,9 +485,173 @@ th {
   color: var(--blue);
 }
 
+.instructor-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.instructor-panel:not(.active-view) {
+  display: none;
+}
+
+.instructor-workbench {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.instructor-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.instructor-card {
+  padding: 1rem;
+}
+
+.instructor-card h3,
+.module-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.module-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: calc(100vh - 13rem);
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.module-group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.module-group h3 {
+  margin: 0.45rem 0 0.2rem;
+  color: var(--gold);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.lesson-picker {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  border-color: transparent;
+  padding: 0.65rem;
+  background: transparent;
+  text-align: left;
+}
+
+.lesson-picker:hover,
+.lesson-picker.selected {
+  border-color: var(--line);
+  background: #202734;
+}
+
+.lesson-picker strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.lesson-picker span:not(.pill),
+.check-item span:not(.pill),
+.lesson-row span:not(.pill) {
+  display: block;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.lesson-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(16rem, 0.95fr);
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.lesson-detail .instructor-summary,
+.lesson-detail .current-prep {
+  grid-column: 1 / -1;
+}
+
+.check-item {
+  display: grid;
+  gap: 0.45rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.75rem;
+}
+
+.check-item:last-child {
+  border-bottom: 0;
+}
+
+.check-item strong {
+  color: var(--text);
+}
+
+.lesson-flags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.tool-buttons {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.tool-result {
+  min-height: 12rem;
+  max-height: 24rem;
+  color: var(--green);
+}
+
+.tool-result[data-status="warning"] {
+  color: var(--gold);
+}
+
+.tool-result[data-status="error"] {
+  color: var(--red);
+}
+
 @media (max-width: 980px) {
+  .shell,
+  .today-layout,
+  .grid-two,
+  .split,
   .filters,
-  .material-row {
+  .material-row,
+  .instructor-workbench,
+  .lesson-detail,
+  .instructor-summary,
+  .next-lessons {
     grid-template-columns: 1fr;
+  }
+
+  .rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .rail nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lesson-flags {
+    justify-content: flex-start;
   }
 }

@@ -35,7 +35,7 @@ Then open `BUS123 Mission Control.app` from the Desktop.
 The launcher expects these sibling repositories:
 
 ```text
-~/Documents/GitHub/BUS123-mission-control
+~/Documents/GitHub/BUS123-mission-control-active
 ~/Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology
 ~/Documents/GitHub/BUS123-instructor
 ```
