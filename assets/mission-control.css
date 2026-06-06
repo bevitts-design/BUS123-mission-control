@@ -245,6 +245,7 @@ p {
 .next-lesson,
 .instructor-summary div,
 .instructor-card,
+.week-ahead-card,
 .module-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -267,6 +268,73 @@ p {
   padding: 0.75rem;
   color: var(--muted);
   line-height: 1.4;
+}
+
+.week-ahead-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+}
+
+.week-ahead-card .panel-heading {
+  margin-bottom: 0;
+}
+
+.week-ahead-summary,
+.week-ahead-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.week-ahead-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.week-ahead-row {
+  display: grid;
+  grid-template-columns: minmax(6.4rem, 0.7fr) minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  border: 1px solid #2b3442;
+  border-radius: 8px;
+  padding: 0.65rem;
+  background: #111820;
+}
+
+.week-ahead-row time {
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.week-ahead-row div {
+  min-width: 0;
+}
+
+.week-ahead-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.week-ahead-row span {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.week-ahead-row a {
+  border: 1px solid #4a5262;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  color: var(--text);
+  background: #202938;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .quiet-section,
@@ -630,6 +698,7 @@ th {
   .split,
   .filters,
   .material-row,
+  .week-ahead-row,
   .instructor-workbench,
   .lesson-detail,
   .instructor-summary,

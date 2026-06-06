@@ -18,6 +18,7 @@ const gradingState = {
 
 const actions = {
   "open-canvas": { kind: "navigate", url: "https://endicott.instructure.com/courses/58218" },
+  "open-canvas-calendar": { kind: "navigate", url: "https://endicott.instructure.com/calendar?include_contexts=course_58218" },
   "open-public-site": { kind: "navigate", url: "http://localhost:8124/" },
   "open-public-repo": { kind: "open", target: "publicRepo" },
   "open-instructor-repo": { kind: "open", target: "instructorRepo" },
@@ -422,6 +423,76 @@ function renderToday(dashboard) {
   });
 }
 
+function renderCanvasWeekAhead(data) {
+  const summary = document.querySelector("#weekAheadSummary");
+  const list = document.querySelector("#weekAheadList");
+  if (!summary || !list) return;
+
+  const items = Array.isArray(data.items) ? data.items : [];
+  const generatedAt = data.generatedAt ? new Date(data.generatedAt) : null;
+  const updated = generatedAt && !Number.isNaN(generatedAt.valueOf())
+    ? `Updated ${new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(generatedAt)}`
+    : "Not refreshed yet";
+
+  summary.textContent = items.length
+    ? `${items.length} upcoming Canvas item${items.length === 1 ? "" : "s"} · ${updated}`
+    : `No upcoming Canvas items in the public week-ahead file · ${updated}`;
+
+  list.innerHTML = "";
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "week-ahead-empty";
+    empty.textContent = data.error || "Run the Canvas week-ahead refresh when Canvas dates are ready.";
+    list.append(empty);
+    return;
+  }
+
+  items.slice(0, 5).forEach((item) => {
+    const row = document.createElement("article");
+    row.className = "week-ahead-row";
+
+    const date = new Date(item.startsAt);
+    const time = document.createElement("time");
+    time.dateTime = item.startsAt || "";
+    time.textContent = item.allDay
+      ? formatDate(date)
+      : `${formatDate(date)} · ${formatTime(date)}`;
+
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = item.title || "Canvas item";
+    const type = document.createElement("span");
+    type.textContent = item.type || "Event";
+    copy.append(title, type);
+
+    row.append(time, copy);
+    if (item.url) {
+      const link = document.createElement("a");
+      link.href = item.url;
+      link.textContent = "Canvas";
+      row.append(link);
+    }
+    list.append(row);
+  });
+}
+
+async function loadCanvasWeekAhead() {
+  const summary = document.querySelector("#weekAheadSummary");
+  if (summary) summary.textContent = "Loading Canvas week-ahead data...";
+  const data = await getJson("/api/canvas/week-ahead");
+  renderCanvasWeekAhead(data);
+}
+
+function formatDate(date) {
+  if (Number.isNaN(date.valueOf())) return "Date unavailable";
+  return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(date);
+}
+
+function formatTime(date) {
+  if (Number.isNaN(date.valueOf())) return "";
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
 function renderInstructorDashboard(dashboard) {
   instructorState.dashboard = dashboard;
   instructorState.lessons = flattenedLessons(dashboard);
@@ -645,6 +716,15 @@ loadInstructorDashboard().catch((error) => {
   writeLog(`Instructor dashboard error: ${error.message}.`);
   const summary = document.querySelector("#instructorSummary");
   if (summary) summary.textContent = "Instructor dashboard could not load.";
+});
+
+loadCanvasWeekAhead().catch((error) => {
+  writeLog(`Canvas week-ahead error: ${error.message}.`);
+  renderCanvasWeekAhead({
+    generatedAt: null,
+    items: [],
+    error: "Canvas week-ahead data could not load."
+  });
 });
 
 loadGradingActivities().catch((error) => {

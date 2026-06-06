@@ -34,7 +34,7 @@ const buildTools = {
   "open-teaching-bundle": { script: "open-teaching-bundle.mjs", openTargets: true }
 };
 
-const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip"]);
+const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip", ".docx"]);
 const skippedDirs = new Set([".git", "assets", "tmp", "node_modules", "__MACOSX"]);
 
 const contentTypes = {
@@ -102,6 +102,7 @@ function classifyMaterial(filePath) {
   if (extension === ".pdf" && (lower.includes("pre-reading") || lower.includes("prereading"))) return "pre-reading-pdf";
   if (extension === ".zip" && lower.includes("qti")) return "qti";
   if (extension === ".xlsx" && lower.includes("key")) return "activity-key";
+  if (extension === ".docx" && lower.includes("activity-instructions")) return "activity-instructions";
   if (extension === ".pdf" && lower.includes("solution")) return "solution";
   if (extension === ".html" && lower.includes("interactive")) return "interactive";
   return "other";
@@ -314,6 +315,33 @@ async function handleStatus(response) {
 
 async function handleInstructorDashboard(response) {
   sendJson(response, 200, await getInstructorDashboard());
+}
+
+async function handleCanvasWeekAhead(response) {
+  const weekAheadPath = join(targets.publicRepo, "assets/canvas-week-ahead.json");
+
+  try {
+    const text = await readFile(weekAheadPath, "utf8");
+    const data = JSON.parse(text);
+    sendJson(response, 200, {
+      ...data,
+      sourcePath: relative(targets.publicRepo, weekAheadPath),
+      available: true
+    });
+  } catch (error) {
+    sendJson(response, 200, {
+      generatedAt: null,
+      source: "Canvas Calendar iCal",
+      courseId: "58218",
+      courseMatch: "BUS123",
+      timezone: "America/New_York",
+      windowDays: 7,
+      items: [],
+      sourcePath: relative(targets.publicRepo, weekAheadPath),
+      available: false,
+      error: `Could not read public week-ahead data: ${error.message}`
+    });
+  }
 }
 
 async function handleInstructorFolderOpen(request, response) {
@@ -673,6 +701,11 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && request.url === "/api/instructor/dashboard") {
       await handleInstructorDashboard(response);
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/api/canvas/week-ahead") {
+      await handleCanvasWeekAhead(response);
       return;
     }
 

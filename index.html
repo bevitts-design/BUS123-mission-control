@@ -28,6 +28,7 @@
         </div>
         <div class="quick-actions">
           <button data-action="open-canvas">Canvas</button>
+          <button data-action="open-canvas-calendar">Canvas Calendar</button>
           <button data-action="open-public-site">Open Public Site</button>
           <button data-action="open-public-repo">Public Repo</button>
           <button data-action="open-instructor-repo">Instructor Repo</button>
@@ -66,6 +67,18 @@
                 <strong>8123</strong>
               </div>
             </div>
+            <article class="week-ahead-card">
+              <div class="panel-heading">
+                <span class="status draft">Canvas</span>
+                <span>Week Ahead</span>
+              </div>
+              <div class="week-ahead-summary" id="weekAheadSummary">Loading Canvas week-ahead data...</div>
+              <div class="week-ahead-list" id="weekAheadList" aria-live="polite"></div>
+              <div class="button-row">
+                <button data-action="open-canvas-calendar">Open Calendar</button>
+                <button data-build-tool="regenerate-index">Regenerate Public Index</button>
+              </div>
+            </article>
             <div class="alert-list" id="todayAlerts" aria-live="polite"></div>
           </aside>
         </div>
