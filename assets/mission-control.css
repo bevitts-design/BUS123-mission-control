@@ -196,7 +196,7 @@ p {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(19rem, 0.85fr);
   gap: 1rem;
-  align-items: stretch;
+  align-items: start;
 }
 
 .current-lesson-band,
@@ -210,10 +210,10 @@ p {
 }
 
 .current-lesson-band {
-  min-height: 20rem;
+  min-height: 14rem;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding: clamp(1.25rem, 3vw, 2rem);
   background:
     linear-gradient(145deg, rgb(23 30 42 / 82%), rgb(25 30 38 / 96%)),

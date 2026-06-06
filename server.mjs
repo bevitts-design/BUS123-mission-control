@@ -489,6 +489,7 @@ async function summarizeScores(outputPath) {
   const scoresPath = join(outputPath, "scores.csv");
   const feedbackPath = join(outputPath, "feedback.csv");
   const auditPath = join(outputPath, "audit.json");
+  const workbookPath = join(outputPath, "grade-report.xlsx");
   const text = await readFile(scoresPath, "utf8");
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
   const headers = parseCsvLine(lines[0] || "");
@@ -508,6 +509,7 @@ async function summarizeScores(outputPath) {
     reviewCount,
     averagePercent: Number(average.toFixed(1)),
     reports: {
+      workbook: workbookPath,
       scores: scoresPath,
       feedback: feedbackPath,
       audit: auditPath

@@ -600,9 +600,10 @@ document.addEventListener("click", async (event) => {
         `${summary.count} submission${summary.count === 1 ? "" : "s"} graded.`,
         `Average: ${summary.averagePercent}%.`,
         summary.reviewCount ? `${summary.reviewCount} flagged for manual review.` : "No manual review flags.",
+        `Excel report: ${summary.reports.workbook}`,
         `Scores: ${summary.reports.scores}`
       ].join(" ");
-      writeLog(`${result.message} Scores report: ${summary.reports.scores}`);
+      writeLog(`${result.message} Excel report: ${summary.reports.workbook}`);
     }
 
     if (action.kind === "refreshMaterials") {
