@@ -500,6 +500,7 @@ async function summarizeScores(outputPath) {
 
   const count = rows.length;
   const reviewCount = rows.filter((row) => row.manual_review === "yes").length;
+  const percentBasis = rows.find((row) => row.percent_basis)?.percent_basis || "overall";
   const average = count
     ? rows.reduce((sum, row) => sum + Number(row.percent || 0), 0) / count
     : 0;
@@ -508,6 +509,7 @@ async function summarizeScores(outputPath) {
     count,
     reviewCount,
     averagePercent: Number(average.toFixed(1)),
+    percentBasis,
     reports: {
       workbook: workbookPath,
       scores: scoresPath,

@@ -596,9 +596,10 @@ document.addEventListener("click", async (event) => {
       button.textContent = "Running...";
       const result = await postJson("/api/grading/run", { activityId, submissionsPath, outputPath });
       const summary = result.summary;
+      const averageLabel = summary.percentBasis === "auto" ? "Average auto score" : "Average";
       document.querySelector("#gradingSummary").textContent = [
         `${summary.count} submission${summary.count === 1 ? "" : "s"} graded.`,
-        `Average: ${summary.averagePercent}%.`,
+        `${averageLabel}: ${summary.averagePercent}%.`,
         summary.reviewCount ? `${summary.reviewCount} flagged for manual review.` : "No manual review flags.",
         `Excel report: ${summary.reports.workbook}`,
         `Scores: ${summary.reports.scores}`
