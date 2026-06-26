@@ -124,7 +124,7 @@ function parseGitStatus(text) {
     .filter(Boolean)
     .map((line) => {
       const status = line.slice(0, 2);
-      const path = line.slice(3).replace(/^.* -> /, "");
+      const path = line.slice(2).trim().replace(/^.* -> /, "");
       return {
         line,
         path,
