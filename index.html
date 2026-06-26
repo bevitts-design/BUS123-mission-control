@@ -114,9 +114,10 @@
             </div>
 
             <article class="instructor-card current-prep">
-              <div class="panel-heading">
+              <div class="panel-heading selected-lesson-heading">
                 <span class="status draft">Selected</span>
                 <span>Prep Notes</span>
+                <span class="pill type" id="selectedCurrentState">Loading</span>
               </div>
               <h3 id="currentLessonTitle">Current lesson</h3>
               <p id="currentLessonMeta">Loading lesson context...</p>
@@ -135,6 +136,7 @@
               </label>
               <div class="button-row">
                 <button data-action="savePrepNotes">Save Notes</button>
+                <button data-action="setCurrentLesson" id="setCurrentLessonButton" disabled>Make Current</button>
                 <button data-action="openCurrentInstructorFolder" id="openCurrentInstructorFolder" disabled>Open Instructor Folder</button>
               </div>
             </article>

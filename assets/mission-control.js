@@ -31,6 +31,7 @@ const actions = {
   "refresh-materials": { kind: "refreshMaterials" },
   "refreshInstructor": { kind: "refreshInstructor" },
   "savePrepNotes": { kind: "savePrepNotes" },
+  "setCurrentLesson": { kind: "setCurrentLesson" },
   "openCurrentInstructorFolder": { kind: "openInstructorFolder" },
   "openTodayInstructorFolder": { kind: "openTodayInstructorFolder" }
 };
@@ -315,6 +316,8 @@ function renderCurrentPrep(dashboard) {
   const prepStatus = document.querySelector("#prepStatus");
   const prepNotes = document.querySelector("#prepNotes");
   const openFolderButton = document.querySelector("#openCurrentInstructorFolder");
+  const setCurrentButton = document.querySelector("#setCurrentLessonButton");
+  const currentState = document.querySelector("#selectedCurrentState");
 
   if (!lesson) {
     instructorState.currentLessonId = "";
@@ -324,10 +327,14 @@ function renderCurrentPrep(dashboard) {
     prepStatus.value = "not-started";
     prepNotes.value = "";
     openFolderButton.disabled = true;
+    setCurrentButton.disabled = true;
+    currentState.textContent = "No lesson";
+    currentState.className = "pill review";
     return;
   }
 
   const prep = getPrepState(lesson.id);
+  const isCurrent = lesson.id === dashboard.currentLesson?.id;
   instructorState.currentLessonId = lesson.id;
   instructorState.currentFolderId = lesson.instructorFolderId || "";
   title.textContent = lesson.title;
@@ -335,6 +342,10 @@ function renderCurrentPrep(dashboard) {
   prepStatus.value = prep.status || "not-started";
   prepNotes.value = prep.notes || "";
   openFolderButton.disabled = !lesson.instructorFolderId;
+  setCurrentButton.disabled = isCurrent;
+  setCurrentButton.textContent = isCurrent ? "Current Lesson" : "Make Current";
+  currentState.textContent = isCurrent ? "Current" : "Not current";
+  currentState.className = `pill ${isCurrent ? "current" : "type"}`;
 }
 
 function renderModuleDashboard(dashboard) {
@@ -626,6 +637,19 @@ document.addEventListener("click", async (event) => {
       writeLog("Prep notes saved locally.");
     }
 
+    if (action.kind === "setCurrentLesson") {
+      const lessonId = instructorState.currentLessonId;
+      if (!lessonId) throw new Error("Choose a lesson before setting the current lesson");
+      button.disabled = true;
+      button.textContent = "Updating...";
+      const result = await postJson("/api/course/current-lesson", { lessonId });
+      instructorState.dashboard = result.dashboard;
+      instructorState.selectedLessonId = lessonId;
+      renderInstructorDashboard(result.dashboard);
+      const regenerationStatus = result.regeneration?.status || "unknown";
+      writeLog(`Current lesson set to ${result.currentLessonTitle}. Index regeneration: ${regenerationStatus}.`);
+    }
+
     if (action.kind === "openInstructorFolder") {
       const result = await postJson("/api/instructor/folder/open", { folderId: instructorState.currentFolderId });
       writeLog(result.message);
@@ -641,6 +665,9 @@ document.addEventListener("click", async (event) => {
     if (action.kind === "grading") {
       button.disabled = false;
       button.textContent = "Run Grader";
+    }
+    if (action.kind === "setCurrentLesson" && instructorState.dashboard) {
+      renderInstructorDashboard(instructorState.dashboard);
     }
   }
 });

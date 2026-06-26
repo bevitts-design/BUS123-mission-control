@@ -176,6 +176,14 @@ p {
   margin-bottom: 1rem;
 }
 
+.selected-lesson-heading {
+  flex-wrap: wrap;
+}
+
+.selected-lesson-heading .pill {
+  margin-left: auto;
+}
+
 .status {
   border-radius: 999px;
   padding: 0.25rem 0.55rem;

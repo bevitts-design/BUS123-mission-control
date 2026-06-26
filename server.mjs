@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { mkdir, readFile, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, normalize, relative, sep } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -184,6 +184,10 @@ async function readCourseMap() {
   return JSON.parse(await readFile(targets.courseMap, "utf8"));
 }
 
+async function writeCourseMap(courseMap) {
+  await writeFile(targets.courseMap, `${JSON.stringify(courseMap, null, 2)}\n`);
+}
+
 function lessonKey(lesson) {
   return [
     String(lesson.track || "").toUpperCase(),
@@ -315,6 +319,35 @@ async function handleStatus(response) {
 
 async function handleInstructorDashboard(response) {
   sendJson(response, 200, await getInstructorDashboard());
+}
+
+async function handleCurrentLessonUpdate(request, response) {
+  const body = await readRequestJson(request);
+  const nextLessonId = String(body.lessonId || "").trim();
+  const courseMap = await readCourseMap();
+  const lessons = courseMap.lessons ?? [];
+  const nextLesson = lessons.find((lesson) => lesson.id === nextLessonId);
+
+  if (!nextLesson) {
+    sendJson(response, 400, { error: "Choose a valid lesson before updating the current lesson." });
+    return;
+  }
+
+  const previousLessonId = courseMap.course?.currentLessonId || "";
+  if (!courseMap.course) courseMap.course = {};
+  courseMap.course.currentLessonId = nextLesson.id;
+  await writeCourseMap(courseMap);
+
+  const regeneration = await runBuildToolScript(buildTools["regenerate-index"].script);
+  const dashboard = await getInstructorDashboard();
+
+  sendJson(response, 200, {
+    previousLessonId,
+    currentLessonId: nextLesson.id,
+    currentLessonTitle: nextLesson.title || nextLesson.id,
+    regeneration,
+    dashboard
+  });
 }
 
 async function handleCanvasWeekAhead(response) {
@@ -705,6 +738,11 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && request.url === "/api/instructor/dashboard") {
       await handleInstructorDashboard(response);
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/course/current-lesson") {
+      await handleCurrentLessonUpdate(request, response);
       return;
     }
 
