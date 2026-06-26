@@ -34,6 +34,7 @@ const buildTools = {
   "open-teaching-bundle": { script: "open-teaching-bundle.mjs", openTargets: true }
 };
 
+const publishPaths = ["course-map.json", "index.html"];
 const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip", ".docx"]);
 const skippedDirs = new Set([".git", "assets", "tmp", "node_modules", "__MACOSX"]);
 
@@ -86,11 +87,52 @@ function openTarget(target) {
   });
 }
 
+function runCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { maxBuffer: 1024 * 1024, ...options }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
+    });
+  });
+}
+
+function runPublicGit(args) {
+  return runCommand("git", args, { cwd: targets.publicRepo });
+}
+
+function commandErrorMessage(error) {
+  return String(error.stderr || error.stdout || error.message || "Unknown command error").trim();
+}
+
 // Helper to make sure paths remain strictly isolated inside their root tracking paths
 function isPathInside(candidate, root) {
   const normalizedRoot = normalize(root);
   const normalizedCandidate = normalize(candidate);
   return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}${sep}`);
+}
+
+function parseGitStatus(text) {
+  return text
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => {
+      const status = line.slice(0, 2);
+      const path = line.slice(3).replace(/^.* -> /, "");
+      return {
+        line,
+        path,
+        staged: status[0] !== " " && status[0] !== "?",
+        deleted: status.includes("D"),
+        publishPath: publishPaths.includes(path)
+      };
+    });
 }
 
 function classifyMaterial(filePath) {
@@ -348,6 +390,75 @@ async function handleCurrentLessonUpdate(request, response) {
     regeneration,
     dashboard
   });
+}
+
+async function handleCoursePublish(response) {
+  const courseMap = await readCourseMap();
+  const currentLesson = (courseMap.lessons ?? [])
+    .find((lesson) => lesson.id === courseMap.course?.currentLessonId);
+  const lessonLabel = currentLesson
+    ? `${currentLesson.title || currentLesson.id} (${currentLesson.id})`
+    : courseMap.course?.currentLessonId || "current lesson";
+
+  try {
+    const status = parseGitStatus((await runPublicGit(["status", "--porcelain=v1"])).stdout);
+    const expectedChanges = status.filter((item) => item.publishPath);
+    const unrelatedStaged = status.filter((item) => !item.publishPath && item.staged);
+    const unrelatedUnstaged = status.filter((item) => !item.publishPath && !item.staged);
+
+    if (unrelatedStaged.length) {
+      sendJson(response, 409, {
+        error: `Unrelated staged changes exist in the public repo: ${unrelatedStaged.map((item) => item.path).join(", ")}. Unstage or commit them before publishing from Mission Control.`
+      });
+      return;
+    }
+
+    if (!expectedChanges.length) {
+      sendJson(response, 200, {
+        status: "clean",
+        message: "No current-lesson changes to publish.",
+        details: unrelatedUnstaged.length
+          ? [`Left unrelated unstaged public-repo changes alone: ${unrelatedUnstaged.map((item) => item.path).join(", ")}`]
+          : []
+      });
+      return;
+    }
+
+    if (expectedChanges.some((item) => item.deleted)) {
+      sendJson(response, 409, {
+        error: "Mission Control will not publish deleted course-map or index files. Restore those files before publishing."
+      });
+      return;
+    }
+
+    const branch = (await runPublicGit(["branch", "--show-current"])).stdout;
+    if (!branch) {
+      sendJson(response, 409, { error: "The public repo is in a detached HEAD state. Check out a branch before publishing." });
+      return;
+    }
+
+    await runPublicGit(["add", "--", ...publishPaths]);
+    await runPublicGit(["commit", "-m", `Update BUS123 current lesson to ${currentLesson?.id || "current lesson"}`, "--", ...publishPaths]);
+    const commit = (await runPublicGit(["rev-parse", "--short", "HEAD"])).stdout;
+    await runPublicGit(["push", "origin", branch]);
+    const dashboard = await getInstructorDashboard();
+
+    sendJson(response, 200, {
+      status: "published",
+      message: `Published ${lessonLabel} to GitHub.`,
+      branch,
+      commit,
+      dashboard,
+      details: [
+        `Commit ${commit} pushed to origin/${branch}.`,
+        ...(unrelatedUnstaged.length
+          ? [`Left unrelated unstaged public-repo changes alone: ${unrelatedUnstaged.map((item) => item.path).join(", ")}`]
+          : [])
+      ]
+    });
+  } catch (error) {
+    sendJson(response, 500, { error: `Publish failed: ${commandErrorMessage(error)}` });
+  }
 }
 
 async function handleCanvasWeekAhead(response) {
@@ -743,6 +854,11 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && request.url === "/api/course/current-lesson") {
       await handleCurrentLessonUpdate(request, response);
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/course/publish") {
+      await handleCoursePublish(response);
       return;
     }
 

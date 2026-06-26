@@ -32,6 +32,7 @@ const actions = {
   "refreshInstructor": { kind: "refreshInstructor" },
   "savePrepNotes": { kind: "savePrepNotes" },
   "setCurrentLesson": { kind: "setCurrentLesson" },
+  "publishCourseMap": { kind: "publishCourseMap" },
   "openCurrentInstructorFolder": { kind: "openInstructorFolder" },
   "openTodayInstructorFolder": { kind: "openTodayInstructorFolder" }
 };
@@ -647,7 +648,19 @@ document.addEventListener("click", async (event) => {
       instructorState.selectedLessonId = lessonId;
       renderInstructorDashboard(result.dashboard);
       const regenerationStatus = result.regeneration?.status || "unknown";
-      writeLog(`Current lesson set to ${result.currentLessonTitle}. Index regeneration: ${regenerationStatus}.`);
+      writeLog(`Current lesson set to ${result.currentLessonTitle}. Index regeneration: ${regenerationStatus}. Publish to GitHub when ready.`);
+    }
+
+    if (action.kind === "publishCourseMap") {
+      button.disabled = true;
+      button.textContent = "Publishing...";
+      const result = await postJson("/api/course/publish", {});
+      if (result.dashboard) {
+        instructorState.dashboard = result.dashboard;
+        renderInstructorDashboard(result.dashboard);
+      }
+      writeLog(result.message);
+      (result.details || []).forEach((detail) => writeLog(detail));
     }
 
     if (action.kind === "openInstructorFolder") {
@@ -668,6 +681,10 @@ document.addEventListener("click", async (event) => {
     }
     if (action.kind === "setCurrentLesson" && instructorState.dashboard) {
       renderInstructorDashboard(instructorState.dashboard);
+    }
+    if (action.kind === "publishCourseMap") {
+      button.disabled = false;
+      button.textContent = "Publish to GitHub";
     }
   }
 });
