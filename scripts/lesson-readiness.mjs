@@ -1,3 +1,4 @@
-import { lessonReadiness, parseRoots, printJson } from "./build-tools-lib.mjs";
+import { parseRoots, printJson } from "./build-tools-lib.mjs";
+import { courseHealth } from "./course-health-lib.mjs";
 
-printJson(await lessonReadiness(parseRoots(process.argv.slice(2))));
+printJson(await courseHealth(parseRoots(process.argv.slice(2))));
