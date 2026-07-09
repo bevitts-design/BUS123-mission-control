@@ -1,5 +1,7 @@
 const log = document.querySelector("#log");
-const API_BASE = window.location.protocol === "file:" ? "http://localhost:8123" : "";
+const API_BASE = window.location.hostname === "127.0.0.1" && window.location.port === "8123"
+  ? ""
+  : "http://localhost:8123";
 const materialState = {
   items: [],
   filtersReady: false
@@ -68,8 +70,18 @@ function writeLog(message) {
   log.scrollTop = log.scrollHeight;
 }
 
-if (window.location.protocol === "file:") {
-  writeLog("Opened as a file. Buttons will use the local server at http://localhost:8123; if they fail, start the Mission Control server and open that URL.");
+if (API_BASE) {
+  writeLog(`API requests will use ${API_BASE}.`);
+}
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const preview = text.trim().slice(0, 120).replace(/\s+/g, " ");
+    throw new Error(`Server returned non-JSON content (${response.status}): ${preview || "empty response"}`);
+  }
 }
 
 async function postJson(url, payload) {
@@ -78,7 +90,7 @@ async function postJson(url, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  const data = await response.json();
+  const data = await parseJsonResponse(response);
   if (!response.ok) {
     throw new Error(data.error || "Request failed.");
   }
@@ -87,7 +99,7 @@ async function postJson(url, payload) {
 
 async function getJson(url) {
   const response = await fetch(`${API_BASE}${url}`);
-  const data = await response.json();
+  const data = await parseJsonResponse(response);
   if (!response.ok) {
     throw new Error(data.error || "Request failed.");
   }
@@ -259,264 +271,100 @@ function setupMaterialFilters() {
 }
 
 async function loadMaterials() {
-  const summary = document.querySelector("#materialsSummary");
-  if (!summary) return;
-
-  summary.textContent = "Scanning public and private materials...";
   const data = await getJson("/api/materials");
-  materialState.items = data.materials;
-
-  populateSelect(document.querySelector("#filterVisibility"), [...new Set(data.materials.map((item) => item.visibility))].sort(), "All materials");
-  populateSelect(document.querySelector("#filterTrack"), [...new Set(data.materials.map((item) => item.track))].sort(), "All sections");
-  populateSelect(document.querySelector("#filterModule"), [...new Set(data.materials.map((item) => item.module))].sort(), "All modules");
-  populateSelect(document.querySelector("#filterLesson"), [...new Set(data.materials.map((item) => item.lesson))].sort(), "All lessons");
-  populateSelect(document.querySelector("#filterType"), [...new Set(data.materials.map((item) => item.type))].sort(), "All types");
-
-  if (!materialState.filtersReady) {
-    setupMaterialFilters();
-    materialState.filtersReady = true;
-  }
-
+  materialState.items = data.materials || [];
   renderMaterials();
 }
 
 function renderCheckItems(container, items) {
+  if (!container) return;
   container.innerHTML = "";
   if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "check-item";
-    empty.textContent = "No matching workflow items yet.";
-    container.append(empty);
+    container.textContent = "No items to display.";
     return;
   }
-
-  items.forEach((item) => {
-    const row = document.createElement("article");
+  for (const item of items) {
+    const row = document.createElement("div");
     row.className = "check-item";
-    const title = document.createElement("strong");
-    title.textContent = item.title;
-    const meta = document.createElement("span");
-    meta.textContent = item.meta;
-    row.append(createStatusPill(item.status, item.state), title, meta);
+    row.innerHTML = `<strong>${item.title}</strong><span>${item.meta}</span><em class="${item.state}">${item.status}</em>`;
     container.append(row);
-  });
+  }
 }
 
 function summarizeLessonPrivateArtifacts(lesson) {
   return Object.entries(lesson.privateArtifactsByType || {})
     .map(([type, count]) => `${count} ${labelFor(type)}`)
-    .join(", ");
+    .join(", ") || "No private artifacts";
 }
 
 function renderCurrentPrep(dashboard) {
-  const lesson = instructorState.lessons.find((item) => item.id === instructorState.selectedLessonId)
+  const lessons = flattenedLessons(dashboard);
+  instructorState.lessons = lessons;
+  const selected = lessons.find((lesson) => lesson.id === instructorState.selectedLessonId)
     || dashboard.currentLesson
-    || instructorState.lessons[0];
+    || lessons[0]
+    || null;
+  if (!selected) return;
+  instructorState.currentLessonId = selected.id;
+  instructorState.currentFolderId = selected.instructorFolderId || "";
   const title = document.querySelector("#currentLessonTitle");
   const meta = document.querySelector("#currentLessonMeta");
-  const prepStatus = document.querySelector("#prepStatus");
-  const prepNotes = document.querySelector("#prepNotes");
-  const openFolderButton = document.querySelector("#openCurrentInstructorFolder");
-  const setCurrentButton = document.querySelector("#setCurrentLessonButton");
+  if (title) title.textContent = selected.title;
+  if (meta) meta.textContent = `${selected.key} · ${selected.status} · ${selected.materialCount} public materials`;
+  const saved = getPrepState(selected.id);
+  const status = document.querySelector("#prepStatus");
+  const notes = document.querySelector("#prepNotes");
+  if (status) status.value = saved.status || "not-started";
+  if (notes) notes.value = saved.notes || "";
   const currentState = document.querySelector("#selectedCurrentState");
-
-  if (!lesson) {
-    instructorState.currentLessonId = "";
-    instructorState.currentFolderId = "";
-    title.textContent = "No current lesson selected";
-    meta.textContent = "Set course.currentLessonId in the public course map to use current-lesson prep.";
-    prepStatus.value = "not-started";
-    prepNotes.value = "";
-    openFolderButton.disabled = true;
-    setCurrentButton.disabled = true;
-    currentState.textContent = "No lesson";
-    currentState.className = "pill review";
-    return;
-  }
-
-  const prep = getPrepState(lesson.id);
-  const isCurrent = lesson.id === dashboard.currentLesson?.id;
-  instructorState.currentLessonId = lesson.id;
-  instructorState.currentFolderId = lesson.instructorFolderId || "";
-  title.textContent = lesson.title;
-  meta.textContent = `${lesson.key} · ${lesson.status} · ${lesson.caseStudy || "No case study"} · ${lesson.skillFocus.join(", ")}`;
-  prepStatus.value = prep.status || "not-started";
-  prepNotes.value = prep.notes || "";
-  openFolderButton.disabled = !lesson.instructorFolderId;
-  setCurrentButton.disabled = isCurrent;
-  setCurrentButton.textContent = isCurrent ? "Current Lesson" : "Make Current";
-  currentState.textContent = isCurrent ? "Current" : "Not current";
-  currentState.className = `pill ${isCurrent ? "current" : "type"}`;
+  if (currentState) currentState.textContent = selected.isCurrent ? "Current" : "Not current";
+  const setCurrent = document.querySelector("#setCurrentLessonButton");
+  if (setCurrent) setCurrent.disabled = selected.isCurrent;
+  const openFolder = document.querySelector("#openCurrentInstructorFolder");
+  if (openFolder) openFolder.disabled = !selected.instructorFolderId;
 }
 
 function renderModuleDashboard(dashboard) {
   const container = document.querySelector("#moduleDashboard");
+  if (!container) return;
   container.innerHTML = "";
-
-  dashboard.modules.forEach((module) => {
-    const group = document.createElement("section");
-    group.className = "module-group";
+  for (const module of dashboard.modules) {
+    const section = document.createElement("section");
+    section.className = "module-card";
     const heading = document.createElement("h3");
     heading.textContent = `${module.track} ${module.module}`;
-    group.append(heading);
-
-    module.lessons.forEach((lesson) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "lesson-picker";
-      row.dataset.lessonId = lesson.id;
-      row.classList.toggle("selected", lesson.id === instructorState.selectedLessonId);
-
-      const details = document.createElement("div");
-      const lessonTitle = document.createElement("strong");
-      lessonTitle.textContent = lesson.title;
-      const lessonMeta = document.createElement("span");
-      lessonMeta.textContent = `${lesson.key} · ${lesson.privateArtifactCount} private`;
-      details.append(lessonTitle, lessonMeta);
-
-      const flags = document.createElement("div");
-      flags.className = "lesson-flags";
-      if (lesson.isCurrent) flags.append(createStatusPill("Current", "current"));
-      if (lesson.missingPublic.length || !lesson.instructorFolderExists) flags.append(createStatusPill("Review", "review"));
-      else flags.append(createStatusPill("Ready", "ready"));
-
-      row.append(details, flags);
-      group.append(row);
-    });
-
-    container.append(group);
-  });
+    section.append(heading);
+    for (const lesson of module.lessons) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.lessonId = lesson.id;
+      button.className = lesson.id === instructorState.currentLessonId ? "selected" : "";
+      button.innerHTML = `<strong>${lesson.title}</strong><span>${lesson.status}</span>`;
+      section.append(button);
+    }
+    container.append(section);
+  }
 }
 
 function renderToday(dashboard) {
-  const lessons = instructorState.lessons;
-  const current = dashboard.currentLesson || lessons[0];
-  const currentIndex = lessons.findIndex((lesson) => lesson.id === current?.id);
-  const prep = getPrepState(current?.id);
-  const title = document.querySelector("#todayLessonTitle");
-  const key = document.querySelector("#todayLessonKey");
-  const meta = document.querySelector("#todayLessonMeta");
-  const openFolder = document.querySelector("#todayOpenInstructorFolder");
-  const alerts = document.querySelector("#todayAlerts");
-  const nextLessons = document.querySelector("#nextLessons");
-
-  if (!current) return;
-
-  title.textContent = current.title;
-  key.textContent = current.key;
-  meta.textContent = `${current.status} · ${prep.status ? labelFor(prep.status) : "Prep not started"} · ${current.caseStudy || "No case study"} · ${current.skillFocus.join(", ")}`;
-  instructorState.todayFolderId = current.instructorFolderId || "";
-  openFolder.disabled = !current.instructorFolderId;
-
-  const alertItems = [
-    current.missingPublic.length ? `${current.missingPublic.length} public material issue${current.missingPublic.length === 1 ? "" : "s"} for the current lesson.` : "",
-    current.instructorFolderExists ? "" : "Current lesson has no detected instructor folder.",
-    current.privateArtifactsByType.qti ? "Canvas package is available for the current lesson." : "No current-lesson QTI package detected.",
-    prep.notes ? "Prep notes are saved locally." : "No prep notes saved yet."
-  ].filter(Boolean);
-
-  alerts.innerHTML = "";
-  alertItems.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "alert-item";
-    row.textContent = item;
-    alerts.append(row);
-  });
-
-  nextLessons.innerHTML = "";
-  lessons.slice(Math.max(currentIndex + 1, 0), Math.max(currentIndex + 4, 3)).forEach((lesson) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "next-lesson";
-    card.dataset.lessonId = lesson.id;
-    card.dataset.viewTarget = "instructor";
-    card.innerHTML = `<strong>${lesson.title}</strong><span>${lesson.key} · ${lesson.status}</span>`;
-    nextLessons.append(card);
-  });
-}
-
-function renderCanvasWeekAhead(data) {
-  const summary = document.querySelector("#weekAheadSummary");
-  const list = document.querySelector("#weekAheadList");
-  if (!summary || !list) return;
-
-  const items = Array.isArray(data.items) ? data.items : [];
-  const generatedAt = data.generatedAt ? new Date(data.generatedAt) : null;
-  const updated = generatedAt && !Number.isNaN(generatedAt.valueOf())
-    ? `Updated ${new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(generatedAt)}`
-    : "Not refreshed yet";
-
-  summary.textContent = items.length
-    ? `${items.length} upcoming Canvas item${items.length === 1 ? "" : "s"} · ${updated}`
-    : `No upcoming Canvas items in the public week-ahead file · ${updated}`;
-
-  list.innerHTML = "";
-  if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "week-ahead-empty";
-    empty.textContent = data.error || "Run the Canvas week-ahead refresh when Canvas dates are ready.";
-    list.append(empty);
-    return;
-  }
-
-  items.slice(0, 5).forEach((item) => {
-    const row = document.createElement("article");
-    row.className = "week-ahead-row";
-
-    const date = new Date(item.startsAt);
-    const time = document.createElement("time");
-    time.dateTime = item.startsAt || "";
-    time.textContent = item.allDay
-      ? formatDate(date)
-      : `${formatDate(date)} · ${formatTime(date)}`;
-
-    const copy = document.createElement("div");
-    const title = document.createElement("strong");
-    title.textContent = item.title || "Canvas item";
-    const type = document.createElement("span");
-    type.textContent = item.type || "Event";
-    copy.append(title, type);
-
-    row.append(time, copy);
-    if (item.url) {
-      const link = document.createElement("a");
-      link.href = item.url;
-      link.textContent = "Canvas";
-      row.append(link);
-    }
-    list.append(row);
-  });
-}
-
-async function loadCanvasWeekAhead() {
-  const summary = document.querySelector("#weekAheadSummary");
-  if (summary) summary.textContent = "Loading Canvas week-ahead data...";
-  const data = await getJson("/api/canvas/week-ahead");
-  renderCanvasWeekAhead(data);
-}
-
-function formatDate(date) {
-  if (Number.isNaN(date.valueOf())) return "Date unavailable";
-  return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(date);
-}
-
-function formatTime(date) {
-  if (Number.isNaN(date.valueOf())) return "";
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date);
+  const lesson = dashboard.currentLesson;
+  if (!lesson) return;
+  document.querySelector("#todayLessonKey").textContent = lesson.key;
+  document.querySelector("#todayLessonTitle").textContent = lesson.title;
+  document.querySelector("#todayLessonMeta").textContent = `${lesson.status} · ${lesson.materialCount} public materials · ${lesson.privateArtifactCount} private artifacts`;
+  instructorState.todayFolderId = lesson.instructorFolderId || "";
+  document.querySelector("#todayOpenInstructorFolder").disabled = !lesson.instructorFolderId;
 }
 
 function renderInstructorDashboard(dashboard) {
   instructorState.dashboard = dashboard;
-  instructorState.lessons = flattenedLessons(dashboard);
-  if (!instructorState.selectedLessonId) {
-    instructorState.selectedLessonId = dashboard.currentLesson?.id || instructorState.lessons[0]?.id || "";
-  }
-
+  instructorState.currentLessonId = dashboard.currentLesson?.id || "";
   const summary = document.querySelector("#instructorSummary");
   summary.innerHTML = "";
   [
     ["Modules", dashboard.totals.modules],
     ["Lessons", dashboard.totals.lessons],
+    ["Current", dashboard.totals.current],
     ["Needs review", dashboard.totals.needsReview],
     ["Private artifacts", dashboard.totals.privateArtifacts]
   ].forEach(([label, value]) => {
@@ -752,6 +600,9 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+setupViews();
+setupMaterialFilters();
+
 loadMaterials().catch((error) => {
   writeLog(`Materials console error: ${error.message}.`);
   const summary = document.querySelector("#materialsSummary");
@@ -778,5 +629,3 @@ loadGradingActivities().catch((error) => {
   const summary = document.querySelector("#gradingSummary");
   if (summary) summary.textContent = "Private grading workflows could not load.";
 });
-
-setupViews();
