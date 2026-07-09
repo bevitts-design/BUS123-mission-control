@@ -1,0 +1,49 @@
+{
+  "activeProfile": "teaching",
+  "profiles": {
+    "teaching": {
+      "label": "Teaching",
+      "publicRepo": "/Users/your-name/Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology",
+      "instructorRepo": "/Users/your-name/Documents/GitHub/BUS123-instructor",
+      "missionControlRepo": "/Users/your-name/Documents/GitHub/BUS123-mission-control",
+      "features": {
+        "privateMaterials": true,
+        "grading": true,
+        "publishing": true
+      }
+    },
+    "travel": {
+      "label": "Travel",
+      "publicRepo": "",
+      "instructorRepo": "",
+      "missionControlRepo": "",
+      "features": {
+        "privateMaterials": false,
+        "grading": false,
+        "publishing": false
+      }
+    },
+    "development": {
+      "label": "Development",
+      "publicRepo": "",
+      "instructorRepo": "",
+      "missionControlRepo": "",
+      "features": {
+        "privateMaterials": true,
+        "grading": true,
+        "publishing": false
+      }
+    },
+    "demo": {
+      "label": "Demo",
+      "publicRepo": "",
+      "instructorRepo": "",
+      "missionControlRepo": "",
+      "features": {
+        "privateMaterials": false,
+        "grading": false,
+        "publishing": false
+      }
+    }
+  }
+}
