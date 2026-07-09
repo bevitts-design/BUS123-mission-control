@@ -1,2 +1,6 @@
 .DS_Store
 logs/
+config/local-config.json
+config/local-config.*.json
+.env
+.env.*
