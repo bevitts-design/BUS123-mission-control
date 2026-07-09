@@ -1,0 +1,85 @@
+course:
+  id: "BUS123"
+  title: "Solving Business Problems with Technology"
+  institution: "Endicott College"
+  semester: "Fall 2026"
+  status: "active-development"
+  public_delivery: true
+course_structure:
+  total_lessons: 21
+  tracks:
+    -
+      id: "intro"
+      label: "Intro"
+      modules: 3
+      public: true
+    -
+      id: "math"
+      label: "Business Math"
+      modules: 12
+      public: true
+    -
+      id: "excel"
+      label: "Excel"
+      modules: 4
+      public: true
+    -
+      id: "capstone"
+      label: "Capstone"
+      modules: 2
+      public: true
+repositories:
+  student_website:
+    repo: "bevitts-design/BUS123-Solving-Business-Problems-with-Technology"
+    visibility: "public"
+    role: "Student-facing course hub, lesson materials, interactives, workbooks, slides, readings"
+  instructor:
+    repo: "bevitts-design/BUS123-instructor"
+    visibility: "private"
+    role: "Instructor-only resources, answer keys, planning, grading, assessment support"
+  mission_control:
+    repo: "bevitts-design/BUS123-mission-control"
+    visibility: "public"
+    role: "Course operating system documentation, tooling, validation, publishing workflows"
+publishing_targets:
+  student_website: true
+  canvas_lms: true
+  canvas_new_quizzes: true
+  qti_packages: true
+  github_pages_or_static_hosting: true
+canonical_data_sources:
+  lesson_inventory_csv: "data/BUS123_CANONICAL_LESSON_INVENTORY.csv"
+  lesson_inventory_json: "data/BUS123_CANONICAL_LESSON_INVENTORY.json"
+  course_manifest_yaml: "course.yaml"
+  course_manifest_json: "course.json"
+default_lesson_components:
+  - "website_entry"
+  - "learning_outcomes"
+  - "business_case"
+  - "slides"
+  - "reading"
+  - "starter_workbook"
+  - "interactive_activity"
+  - "canvas_module"
+  - "canvas_assignment"
+  - "canvas_new_quiz"
+  - "qti_package"
+  - "instructor_notes"
+assessment:
+  quiz_platform: "Canvas New Quizzes"
+  current_default_question_type: "multiple_choice"
+  future_question_types:
+    - "true_false"
+    - "matching"
+    - "fill_in_the_blank"
+    - "numeric"
+    - "short_answer"
+  qti_workflow: "Generate Canvas-importable QTI packages from lesson outcomes, question drafts, or source materials."
+operating_principles:
+  - "Edit data once. Publish everywhere."
+  - "The lesson is the atomic unit of the course."
+  - "Website, Canvas, QTI, and Mission Control should consume shared structured data where possible."
+  - "Keep student-facing materials public and instructor-only materials private."
+  - "Document major workflows before automating them."
+created: "2026-07-09"
+version: "0.1-draft"
