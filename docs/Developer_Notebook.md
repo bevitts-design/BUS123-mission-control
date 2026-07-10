@@ -105,3 +105,14 @@ The readiness calculation currently runs in `assets/mission-control.js` using ev
 4. Confirm **Canvas** says **Not connected**.
 5. Confirm **Canvas New Quiz / QTI** reflects the private lesson folder.
 6. Confirm **Overall Readiness** lists the blocking Student or Instructor Package items.
+
+## Lesson 5: Regression tests catch adjacent problems
+
+The final Lesson Workspace regression checked the existing **Today**, **Instructor**, **Materials**, and **Grading** views as well as the new workspace. The browser console revealed that the Today view called `loadCanvasWeekAhead()` even though its loading and rendering functions were missing.
+
+The repair adds two separate functions:
+
+- `loadCanvasWeekAhead()` requests the local `/api/canvas/week-ahead` data.
+- `renderCanvasWeekAhead()` creates the visible summary and event rows safely with DOM elements.
+
+This is why regression testing checks nearby features, not only the new feature. A page may look mostly correct while a browser-console error prevents one part from loading.

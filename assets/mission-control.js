@@ -611,6 +611,72 @@ async function loadInstructorDashboard() {
   renderInstructorDashboard(dashboard);
 }
 
+function formatCanvasDate(item) {
+  const startsAt = new Date(item.startsAt);
+  if (Number.isNaN(startsAt.getTime())) return "Date unavailable";
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(item.allDay ? {} : { hour: "numeric", minute: "2-digit" })
+  }).format(startsAt);
+}
+
+function renderCanvasWeekAhead(data) {
+  const summary = document.querySelector("#weekAheadSummary");
+  const list = document.querySelector("#weekAheadList");
+  if (!summary || !list) return;
+
+  const items = data.items || [];
+  const generated = data.generatedAt ? new Date(data.generatedAt) : null;
+  const generatedLabel = generated && !Number.isNaN(generated.getTime())
+    ? ` Updated ${generated.toLocaleDateString()}.`
+    : "";
+  summary.textContent = data.error
+    || `${items.length} Canvas item${items.length === 1 ? "" : "s"} in the next ${data.windowDays || 7} days.${generatedLabel}`;
+  list.innerHTML = "";
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "week-ahead-empty";
+    empty.textContent = data.error || "No BUS123 Canvas items are scheduled in this window.";
+    list.append(empty);
+    return;
+  }
+
+  for (const item of items) {
+    const row = document.createElement("article");
+    row.className = "week-ahead-row";
+
+    const time = document.createElement("time");
+    time.dateTime = item.startsAt || "";
+    time.textContent = formatCanvasDate(item);
+
+    const details = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = item.title || "Canvas item";
+    const type = document.createElement("span");
+    type.textContent = item.type || "Canvas";
+    details.append(title, type);
+
+    row.append(time, details);
+    if (item.url) {
+      const link = document.createElement("a");
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Open";
+      row.append(link);
+    }
+    list.append(row);
+  }
+}
+
+async function loadCanvasWeekAhead() {
+  const data = await getJson("/api/canvas/week-ahead");
+  renderCanvasWeekAhead(data);
+}
+
 function renderBuildToolResult(result) {
   const output = document.querySelector("#buildToolResult");
   if (!output) return;
