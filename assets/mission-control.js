@@ -335,13 +335,15 @@ function renderLessonWorkspace(dashboard) {
   const key = document.querySelector("#lessonWorkspaceKey");
   const meta = document.querySelector("#lessonWorkspaceMeta");
   const list = document.querySelector("#lessonWorkspaceStudentMaterials");
-  if (!title || !key || !meta || !list) return;
+  const instructorList = document.querySelector("#lessonWorkspaceInstructorMaterials");
+  if (!title || !key || !meta || !list || !instructorList) return;
 
   if (!lesson) {
     key.textContent = "No lesson selected";
     title.textContent = "Lesson Workspace";
     meta.textContent = "Choose a lesson from the Instructor view.";
     list.textContent = "No student materials to display.";
+    instructorList.textContent = "No instructor materials to display.";
     return;
   }
 
@@ -354,6 +356,7 @@ function renderLessonWorkspace(dashboard) {
   ].filter(Boolean).join(" · ");
 
   list.innerHTML = "";
+  renderInstructorPackage(lesson, instructorList);
   if (!lesson.publicArtifacts?.length) {
     list.textContent = "No student materials are listed in the course map.";
     return;
@@ -381,6 +384,67 @@ function renderLessonWorkspace(dashboard) {
 
     row.append(details, status);
     list.append(row);
+  }
+
+}
+
+function createInstructorMaterialRow({ label, detail, state, materialId = "" }) {
+  const row = document.createElement("div");
+  row.className = "workspace-material-row";
+
+  const details = document.createElement("div");
+  const name = document.createElement("strong");
+  name.textContent = label;
+  const meta = document.createElement("span");
+  meta.textContent = detail;
+  details.append(name, meta);
+
+  const status = document.createElement(materialId ? "button" : "span");
+  status.className = `pill ${state === "Available" ? "ready" : state === "Missing" ? "review" : "type"}`;
+  status.textContent = materialId ? "Open" : state;
+  if (materialId) {
+    status.type = "button";
+    status.dataset.materialId = materialId;
+  }
+
+  row.append(details, status);
+  return row;
+}
+
+function renderInstructorPackage(lesson, container) {
+  container.innerHTML = "";
+  const artifacts = lesson.privateArtifacts || [];
+  const notes = artifacts.find((artifact) => artifact.type === "instructor-notes");
+  const answerTypes = new Set(["activity-key", "solution", "completed"]);
+  const answer = artifacts.find((artifact) => answerTypes.has(artifact.type));
+  const answerKeyRequired = (lesson.publicArtifacts || []).some((artifact) => {
+    const type = String(artifact.type || "").toLowerCase();
+    return ["workbook", "excel", "assignment", "project", "homework", "interactive"]
+      .some((keyword) => type.includes(keyword));
+  });
+
+  container.append(createInstructorMaterialRow({
+    label: "Instructor Notes Guide",
+    detail: notes?.relativePath || "Required private teaching guide not found",
+    state: notes ? "Available" : "Missing",
+    materialId: notes?.id
+  }));
+
+  container.append(createInstructorMaterialRow({
+    label: "Answer Key / Completed File",
+    detail: answer?.relativePath || (answerKeyRequired ? "Required for this lesson's student activity" : "No answer key required for listed student materials"),
+    state: answer ? "Available" : answerKeyRequired ? "Missing" : "Not required",
+    materialId: answer?.id
+  }));
+
+  const additional = artifacts.filter((artifact) => artifact.id !== notes?.id && artifact.id !== answer?.id);
+  for (const artifact of additional) {
+    container.append(createInstructorMaterialRow({
+      label: labelFor(artifact.type),
+      detail: artifact.relativePath,
+      state: "Available",
+      materialId: artifact.id
+    }));
   }
 }
 

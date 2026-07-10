@@ -66,3 +66,22 @@ This separates responsibilities cleanly: the server reads files, HTML provides n
 3. Confirm its Student Package lists the materials from `course-map.json`.
 4. Select a different lesson in **Instructor**, return to **Lesson Workspace**, and confirm the title and materials change.
 5. Open one available student material and confirm the public preview loads.
+
+## Lesson 3: Keeping instructor files private
+
+The Instructor Package uses the same local material scanner as the Materials Console, but it returns only safe metadata to the browser: an internal material ID, file name, relative path, and type. The browser never receives the instructor file's absolute path.
+
+When **Open** is selected, JavaScript sends the internal ID to `/api/materials/open`. The local server looks up the file again, verifies that it is inside the configured private repository, and asks the operating system to open it. This is a Desktop Edition action; it does not create a public URL.
+
+Mission Control now recognizes Markdown instructor guides as well as Word guides. It shows two standard readiness rows:
+
+- **Instructor Notes Guide** is required for every lesson.
+- **Answer Key / Completed File** is required when the Student Package includes a workbook, assignment, project, homework, or interactive activity.
+
+### Test for this increment
+
+1. Restart Mission Control so the private material scan includes the new file types.
+2. Select a lesson with an existing activity key, such as a Math lesson.
+3. Open **Lesson Workspace** and confirm the key appears as available.
+4. Select **Open** and confirm the private file opens locally.
+5. Confirm lessons without an Instructor Notes Guide display **Missing** rather than exposing a broken link.

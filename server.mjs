@@ -35,7 +35,7 @@ const buildTools = {
 };
 
 const publishPaths = ["course-map.json", "index.html"];
-const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip", ".docx"]);
+const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip", ".docx", ".md"]);
 const skippedDirs = new Set([".git", "assets", "tmp", "node_modules", "__MACOSX"]);
 
 const contentTypes = {
@@ -139,13 +139,15 @@ function classifyMaterial(filePath) {
   const lower = basename(filePath).toLowerCase();
   const extension = extname(lower);
 
+  if (lower.includes("instructor-notes") || lower.includes("teaching-guide") || lower.includes("lesson-guide")) return "instructor-notes";
   if (extension === ".html" && lower.includes("slides")) return "slides";
   if (extension === ".xlsx" && lower.includes("starter")) return "excel-starter";
   if (extension === ".pdf" && (lower.includes("pre-reading") || lower.includes("prereading"))) return "pre-reading-pdf";
   if (extension === ".zip" && lower.includes("qti")) return "qti";
   if (extension === ".xlsx" && lower.includes("key")) return "activity-key";
+  if (extension === ".xlsx" && lower.includes("completed")) return "completed";
   if (extension === ".docx" && lower.includes("activity-instructions")) return "activity-instructions";
-  if (extension === ".pdf" && lower.includes("solution")) return "solution";
+  if (lower.includes("solution")) return "solution";
   if (extension === ".html" && lower.includes("interactive")) return "interactive";
   return "other";
 }
@@ -312,6 +314,7 @@ async function getInstructorDashboard() {
       publicArtifacts,
       missingPublic,
       privateArtifactCount: privateArtifacts.length,
+      privateArtifacts: privateArtifacts.map(({ absolutePath, ...artifact }) => artifact),
       privateArtifactsByType: summarizeArtifacts(privateArtifacts),
       instructorFolderExists,
       instructorFolderId: instructorFolderExists ? Buffer.from(instructorFolder).toString("base64url") : ""
