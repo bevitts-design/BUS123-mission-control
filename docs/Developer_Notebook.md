@@ -122,3 +122,15 @@ This is why regression testing checks nearby features, not only the new feature.
 The first Instructor Notes Guide exposed a Course Health matching issue. A generic filename token such as `M01-L01` can occur in Intro, Excel, and other tracks, so it is not specific enough to associate a private file with a lesson.
 
 Course Health now matches private files with the complete lesson identity, such as `intro-m01-l01` or `math-m04-l01`. Stable, track-aware identifiers prevent an Excel answer key from being reported as an Intro answer key simply because both lessons share the same module and lesson numbers.
+
+## Lesson 7: One rule, multiple interfaces
+
+Course Health and the Lesson Workspace originally calculated readiness separately. That duplication allowed the same lesson to be labeled **Almost Ready** in one place and **Ready to Teach** in another.
+
+The source-of-truth alignment sprint moved the policy into `core/readiness.mjs`. Both Node.js validation and the browser interface now call the same evaluator. The shared rule is:
+
+- Missing required Student or Instructor Package components block readiness.
+- Three or more blocking issues produce **Not Ready**.
+- One or two blocking issues produce **Needs Work**.
+- No blocking issues produce **Ready to Teach**.
+- Optional interactive, Canvas, and QTI gaps remain visible warnings without changing teaching readiness.

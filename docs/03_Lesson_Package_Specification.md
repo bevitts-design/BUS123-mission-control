@@ -162,7 +162,7 @@ Student Package:      Complete
 Instructor Package:   Missing answer key
 Publishing Package:   QTI not generated
 
-Overall: Almost Ready
+Overall: Needs Work
 ```
 
 This is more useful than a generic broken-link report because it connects missing files to teaching readiness.

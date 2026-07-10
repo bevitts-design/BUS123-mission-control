@@ -48,10 +48,18 @@ publishing_targets:
   qti_packages: true
   github_pages_or_static_hosting: true
 canonical_data_sources:
-  lesson_inventory_csv: "data/BUS123_CANONICAL_LESSON_INVENTORY.csv"
-  lesson_inventory_json: "data/BUS123_CANONICAL_LESSON_INVENTORY.json"
-  course_manifest_yaml: "course.yaml"
-  course_manifest_json: "course.json"
+  course_manifest:
+    repo: "bevitts-design/BUS123-mission-control"
+    path: "course.yaml"
+  lesson_catalog:
+    repo: "bevitts-design/BUS123-Solving-Business-Problems-with-Technology"
+    path: "course-map.json"
+  readiness_policy:
+    repo: "bevitts-design/BUS123-mission-control"
+    path: "core/readiness.mjs"
+  instructor_materials:
+    repo: "bevitts-design/BUS123-instructor"
+    path: "track/module lesson folders"
 default_lesson_components:
   - "website_entry"
   - "learning_outcomes"

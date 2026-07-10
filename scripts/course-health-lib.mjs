@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { basename, extname, join, relative } from "node:path";
+import { evaluateLessonReadiness } from "../core/readiness.mjs";
 
 const skippedDirs = new Set([".git", "node_modules", "tmp", "__MACOSX"]);
 
@@ -59,38 +60,9 @@ function findInstructorFile(files, lesson, patterns) {
   }) || null;
 }
 
-function classifyStudentMaterials(lesson) {
-  const materials = lesson.materials ?? [];
-  const types = new Set(materials.map((item) => normalize(item.type)));
-  return {
-    slides: [...types].some((type) => type.includes("slide")),
-    reading: [...types].some((type) => type.includes("reading")),
-    workbook: [...types].some((type) => type.includes("workbook") || type.includes("excel")),
-    interactive: [...types].some((type) => type.includes("interactive")),
-    assignment: [...types].some((type) => type.includes("assignment") || type.includes("project") || type.includes("homework"))
-  };
-}
-
-function trackRequirements(track) {
-  if (track === "math" || track === "excel") {
-    return { slides: true, reading: true, workbook: true };
-  }
-  if (track === "capstone") {
-    return { assignment: true, workbook: true };
-  }
-  return { slides: true };
-}
-
-function statusFor(blocking, warnings) {
-  if (blocking.length >= 3) return "Not Ready";
-  if (blocking.length) return "Needs Work";
-  if (warnings.length) return "Almost Ready";
-  return "Ready to Teach";
-}
-
 function resultStatus(lessons) {
   if (lessons.some((lesson) => lesson.status === "Not Ready")) return "error";
-  if (lessons.some((lesson) => lesson.status !== "Ready to Teach")) return "warning";
+  if (lessons.some((lesson) => lesson.status !== "Ready to Teach" || lesson.warnings.length)) return "warning";
   return "success";
 }
 
@@ -115,20 +87,10 @@ export async function courseHealth({ publicRoot, instructorRoot }) {
   const lessons = [];
 
   for (const lesson of courseMap.lessons ?? []) {
-    const blocking = [];
-    const warnings = [];
-    const student = classifyStudentMaterials(lesson);
-    const required = trackRequirements(lesson.track);
-
-    for (const [component, isRequired] of Object.entries(required)) {
-      if (isRequired && !student[component]) blocking.push(`Student ${component} is not listed`);
-    }
-
-    for (const material of lesson.materials ?? []) {
-      if (!material.path || !await pathExists(join(publicRoot, material.path))) {
-        blocking.push(`Missing public file: ${material.path || material.type || "unnamed material"}`);
-      }
-    }
+    const publicArtifacts = await Promise.all((lesson.materials ?? []).map(async (material) => ({
+      ...material,
+      exists: Boolean(material.path) && await pathExists(join(publicRoot, material.path))
+    })));
 
     const instructorNotes = findInstructorFile(instructorFiles, lesson, [
       /instructor-notes/,
@@ -137,7 +99,6 @@ export async function courseHealth({ publicRoot, instructorRoot }) {
       /instructor/
     ]);
 
-    const answerKeyNeeded = student.workbook || student.assignment || student.interactive;
     const answerKey = findInstructorFile(instructorFiles, lesson, [
       /answer-key/,
       /activity-key/,
@@ -146,26 +107,30 @@ export async function courseHealth({ publicRoot, instructorRoot }) {
       /solutions/,
       /key$/
     ]);
+    const qti = findInstructorFile(instructorFiles, lesson, [/qti/, /quiz/]);
 
-    if (!instructorNotes) blocking.push("Instructor notes guide not found");
-    if (answerKeyNeeded && !answerKey) blocking.push("Answer key or completed instructor file not found");
-
-    if (!student.interactive) warnings.push("No interactive activity listed");
-    warnings.push("Canvas status not yet connected");
-    warnings.push("QTI status not yet connected");
+    const readiness = evaluateLessonReadiness({
+      track: lesson.track,
+      publicArtifacts,
+      instructorNotes: Boolean(instructorNotes),
+      answerKey: Boolean(answerKey),
+      canvasConnected: false,
+      qtiAvailable: Boolean(qti)
+    });
 
     lessons.push({
       id: lesson.id,
       label: `${String(lesson.track || "").toUpperCase()} ${lesson.module || ""} ${lesson.lesson || ""} - ${lesson.title || lesson.id}`,
-      status: statusFor(blocking, warnings),
-      blocking,
-      warnings,
-      studentPackage: student,
+      status: readiness.status,
+      blocking: readiness.blocking,
+      warnings: readiness.warnings,
+      studentPackage: readiness.student,
       instructorPackage: {
         instructorNotes: instructorNotes ? relative(instructorRoot, instructorNotes) : null,
         answerKey: answerKey ? relative(instructorRoot, answerKey) : null,
-        answerKeyNeeded
-      }
+        answerKeyNeeded: readiness.answerKeyRequired
+      },
+      qtiPackage: qti ? relative(instructorRoot, qti) : null
     });
   }
 
@@ -176,14 +141,16 @@ export async function courseHealth({ publicRoot, instructorRoot }) {
 
   const details = lessons.map((lesson) => {
     const missing = lesson.blocking.length ? ` | Missing: ${lesson.blocking.join("; ")}` : "";
-    return `${lesson.status.toUpperCase()}: ${lesson.label}${missing}`;
+    const warning = lesson.warnings.length ? ` | Warnings: ${lesson.warnings.join("; ")}` : "";
+    return `${lesson.status.toUpperCase()}: ${lesson.label}${missing}${warning}`;
   });
+  const warningCount = lessons.filter((lesson) => lesson.warnings.length).length;
 
   return {
     tool: "lesson-readiness",
     title: "Check Lesson Readiness",
     status: resultStatus(lessons),
-    summary: `${counts["Ready to Teach"] || 0} ready, ${counts["Almost Ready"] || 0} almost ready, ${counts["Needs Work"] || 0} need work, ${counts["Not Ready"] || 0} not ready.`,
+    summary: `${counts["Ready to Teach"] || 0} ready to teach, ${counts["Needs Work"] || 0} need work, ${counts["Not Ready"] || 0} not ready; ${warningCount} with warnings.`,
     details,
     lessons,
     counts

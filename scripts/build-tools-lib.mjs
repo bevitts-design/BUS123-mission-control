@@ -157,62 +157,6 @@ export async function validatePublicMaterials({ publicRoot }) {
   );
 }
 
-export async function lessonReadiness({ publicRoot }) {
-  const validation = await validatePublicMaterials({ publicRoot });
-  if (!validation.errors || validation.errors.some((item) => item.message.startsWith("Could not read course-map.json"))) {
-    return result(
-      "lesson-readiness",
-      "Check Lesson Readiness",
-      "error",
-      "Readiness could not load the public course map.",
-      validation.details
-    );
-  }
-
-  const { data } = await readCourseMap(publicRoot);
-  const lessons = [];
-
-  for (const lesson of data.lessons ?? []) {
-    const missing = [];
-    for (const material of lesson.materials ?? []) {
-      if (!material.path || !await pathExists(join(publicRoot, material.path))) {
-        missing.push(material.path || `${material.type || "material"} path missing`);
-      }
-    }
-
-    const status = missing.length
-      ? "missing-materials"
-      : /not released|coming soon|in progress/i.test(lesson.status || "")
-        ? "unreleased"
-        : "ready";
-
-    lessons.push({
-      id: lesson.id,
-      label: `${String(lesson.track || "").toUpperCase()} ${lesson.module || ""} ${lesson.lesson || ""} - ${lesson.title || lesson.id}`,
-      status,
-      missing
-    });
-  }
-
-  const counts = lessons.reduce((totals, lesson) => {
-    totals[lesson.status] = (totals[lesson.status] || 0) + 1;
-    return totals;
-  }, {});
-  const details = lessons.map((lesson) => {
-    const suffix = lesson.missing.length ? `: missing ${lesson.missing.join(", ")}` : "";
-    return `${lesson.status.toUpperCase()}: ${lesson.label}${suffix}`;
-  });
-
-  return result(
-    "lesson-readiness",
-    "Check Lesson Readiness",
-    lessons.some((lesson) => lesson.status === "missing-materials") ? "warning" : "success",
-    `${counts.ready || 0} ready, ${counts["missing-materials"] || 0} missing materials, ${counts.unreleased || 0} unreleased.`,
-    details,
-    { lessons, counts }
-  );
-}
-
 export async function openTeachingBundle({ publicRoot, instructorRoot }) {
   const { data } = await readCourseMap(publicRoot);
   const currentLesson = (data.lessons ?? []).find((lesson) => lesson.id === data.course?.currentLessonId);

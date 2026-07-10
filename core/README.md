@@ -23,6 +23,14 @@ Shared-core modules must not directly:
 
 Platform-specific behavior belongs in Desktop Edition adapters. Browser-specific behavior belongs in the Web Edition.
 
-## Initial Module
+## Modules
 
 `config.mjs` loads an ignored local configuration file, environment-variable overrides, and cross-platform default repository paths. The existing server will be migrated to use it after the configuration is tested locally.
+
+`readiness.mjs` is the authoritative readiness policy and evaluator shared by the Desktop validator and Lesson Workspace. Optional Canvas, QTI, and interactive warnings remain visible but do not block **Ready to Teach** when all required Student and Instructor Package components exist.
+
+Run its focused regression test with:
+
+```bash
+node core/readiness.test.mjs
+```

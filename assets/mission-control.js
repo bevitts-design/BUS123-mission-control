@@ -1,3 +1,9 @@
+import {
+  classifyStudentMaterials,
+  evaluateLessonReadiness,
+  isAnswerKeyRequired
+} from "../core/readiness.mjs";
+
 const log = document.querySelector("#log");
 const API_BASE = window.location.hostname === "127.0.0.1" && window.location.port === "8123"
   ? ""
@@ -426,11 +432,7 @@ function renderInstructorPackage(lesson, container) {
   const notes = artifacts.find((artifact) => artifact.type === "instructor-notes");
   const answerTypes = new Set(["activity-key", "solution", "completed"]);
   const answer = artifacts.find((artifact) => answerTypes.has(artifact.type));
-  const answerKeyRequired = (lesson.publicArtifacts || []).some((artifact) => {
-    const type = String(artifact.type || "").toLowerCase();
-    return ["workbook", "excel", "assignment", "project", "homework", "interactive"]
-      .some((keyword) => type.includes(keyword));
-  });
+  const answerKeyRequired = isAnswerKeyRequired(classifyStudentMaterials(lesson.publicArtifacts || []));
 
   container.append(createInstructorMaterialRow({
     label: "Instructor Notes Guide",
@@ -457,36 +459,21 @@ function renderInstructorPackage(lesson, container) {
   }
 }
 
-function lessonReadiness(lesson) {
-  const publicArtifacts = lesson.publicArtifacts || [];
-  const privateArtifacts = lesson.privateArtifacts || [];
-  const notes = privateArtifacts.some((artifact) => artifact.type === "instructor-notes");
-  const answerTypes = new Set(["activity-key", "solution", "completed"]);
-  const answer = privateArtifacts.some((artifact) => answerTypes.has(artifact.type));
-  const answerRequired = publicArtifacts.some((artifact) => {
-    const type = String(artifact.type || "").toLowerCase();
-    return ["workbook", "excel", "assignment", "project", "homework", "interactive"]
-      .some((keyword) => type.includes(keyword));
-  });
-
-  const blocking = [];
-  if (!publicArtifacts.length) blocking.push("No student materials listed");
-  if (publicArtifacts.some((artifact) => !artifact.exists)) blocking.push("Student file missing");
-  if (!notes) blocking.push("Instructor Notes Guide missing");
-  if (answerRequired && !answer) blocking.push("Required answer key missing");
-
-  return {
-    blocking,
-    status: blocking.length ? "Needs Work" : "Ready to Teach"
-  };
-}
-
 function renderPublishingPackage(lesson, container) {
   container.innerHTML = "";
   const publicArtifacts = lesson.publicArtifacts || [];
+  const privateArtifacts = lesson.privateArtifacts || [];
   const websiteReady = publicArtifacts.length > 0 && publicArtifacts.every((artifact) => artifact.exists);
-  const qti = (lesson.privateArtifacts || []).find((artifact) => artifact.type === "qti");
-  const readiness = lessonReadiness(lesson);
+  const qti = privateArtifacts.find((artifact) => artifact.type === "qti");
+  const answerTypes = new Set(["activity-key", "solution", "completed"]);
+  const readiness = evaluateLessonReadiness({
+    track: lesson.track,
+    publicArtifacts,
+    instructorNotes: privateArtifacts.some((artifact) => artifact.type === "instructor-notes"),
+    answerKey: privateArtifacts.some((artifact) => answerTypes.has(artifact.type)),
+    canvasConnected: false,
+    qtiAvailable: Boolean(qti)
+  });
 
   container.append(createInstructorMaterialRow({
     label: "Website",

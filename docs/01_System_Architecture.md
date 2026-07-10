@@ -37,10 +37,12 @@ Course operating system repository. Contains configuration, documentation, struc
 
 ## Canonical Data Sources
 
-- `course.yaml` — global course configuration.
-- `course.json` — JSON version of course configuration.
-- `data/BUS123_CANONICAL_LESSON_INVENTORY.csv` — canonical lesson inventory.
-- `data/BUS123_CANONICAL_LESSON_INVENTORY.json` — automation-friendly lesson inventory.
+- Mission Control `course.yaml` — global course configuration and repository roles.
+- Public repository `course-map.json` — authoritative lesson catalog, current lesson, ordering, public metadata, and student-material paths.
+- Mission Control `core/readiness.mjs` — authoritative readiness policy and evaluation logic shared by the validator and Lesson Workspace.
+- Private instructor lesson folders — authoritative instructor notes, answer keys, QTI packages, and other private teaching artifacts.
+
+CSV, JSON reports, and Markdown inventories may be generated for review or export, but they are derived artifacts and must not become competing editable lesson catalogs.
 
 ## Lesson as Atomic Unit
 
