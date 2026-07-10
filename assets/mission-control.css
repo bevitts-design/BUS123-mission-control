@@ -156,6 +156,17 @@ p {
   gap: 1rem;
 }
 
+.lesson-workspace-placeholder {
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.lesson-package-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
 .grid-two {
   grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
 }
