@@ -75,7 +75,7 @@ Desktop Edition may open these local files. Web Edition must require authenticat
 Show blocking issues separately from enhancements:
 
 - **Blocking:** required file missing, broken public link, instructor notes missing, required answer key missing.
-- **Warning:** interactive missing, Canvas not audited, QTI not generated, timing guide missing.
+- **Warning:** interactive missing, Canvas requires the manual workflow because institutional admin restrictions prevent automated token access, QTI not generated, timing guide missing.
 - **Complete:** required components present and accessible.
 
 ## Core Actions
@@ -134,6 +134,6 @@ The first functional Lesson Workspace should:
 2. Show Student Package and Instructor Package status from current repository scans.
 3. Show blocking and warning counts.
 4. Provide existing open-file and open-folder actions.
-5. Keep Canvas and QTI as status placeholders until integrations are ready.
+5. Keep Canvas as a visible, non-blocking manual-workflow warning while institutional admin restrictions prevent token access; keep QTI as a status placeholder until its workflow is complete.
 
 Visual polish follows after the workflow and data are reliable.

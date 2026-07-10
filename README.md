@@ -9,6 +9,8 @@ Mission Control serves:
 
 The Desktop app starts one detached Node process for both services and opens the control panel in the default browser.
 
+Canvas remains a manual publishing and verification workflow. Institutional admin restrictions prevent automated token access, so Mission Control shows this limitation as a warning without blocking **Ready to Teach**.
+
 ## Repository Contents
 
 - `server.mjs`: local HTTP server, API endpoints, material scan, and public preview

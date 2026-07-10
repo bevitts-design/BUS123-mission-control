@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  CANVAS_MANUAL_WORKFLOW_WARNING,
   classifyStudentMaterials,
   evaluateLessonReadiness,
   isAnswerKeyRequired,
@@ -13,7 +14,9 @@ const intro = evaluateLessonReadiness({
 });
 assert.equal(intro.status, "Ready to Teach");
 assert.deepEqual(intro.blocking, []);
-assert.ok(intro.warnings.includes("Canvas status not yet connected"));
+assert.ok(intro.warnings.includes(CANVAS_MANUAL_WORKFLOW_WARNING));
+assert.equal(intro.status, "Ready to Teach", "Canvas manual workflow must not block teaching readiness");
+assert.ok(!intro.blocking.includes(CANVAS_MANUAL_WORKFLOW_WARNING));
 
 const companyOverview = evaluateLessonReadiness({
   track: "intro",

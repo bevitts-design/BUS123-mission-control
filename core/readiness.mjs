@@ -8,6 +8,9 @@ export const READINESS_POLICY = Object.freeze({
   answerKeyRequiredWhen: Object.freeze(["workbook", "assignment", "interactive"])
 });
 
+export const CANVAS_MANUAL_WORKFLOW_WARNING =
+  "Canvas automated connection unavailable because institutional admin restrictions prevent token access; use the manual Canvas workflow";
+
 function normalize(value) {
   return String(value || "")
     .toLowerCase()
@@ -72,7 +75,7 @@ export function evaluateLessonReadiness({
   if (answerKeyRequired && !answerKey) blocking.push("Answer key or completed instructor file not found");
 
   if (!student.interactive) warnings.push("No interactive activity listed");
-  if (!canvasConnected) warnings.push("Canvas status not yet connected");
+  if (!canvasConnected) warnings.push(CANVAS_MANUAL_WORKFLOW_WARNING);
   if (!qtiAvailable) warnings.push("QTI status not yet connected");
 
   return {

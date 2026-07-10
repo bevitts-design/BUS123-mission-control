@@ -1,4 +1,5 @@
 import {
+  CANVAS_MANUAL_WORKFLOW_WARNING,
   classifyStudentMaterials,
   evaluateLessonReadiness,
   isAnswerKeyRequired
@@ -487,8 +488,8 @@ function renderPublishingPackage(lesson, container) {
 
   container.append(createInstructorMaterialRow({
     label: "Canvas",
-    detail: "Canvas publishing status is not connected yet",
-    state: "Not connected"
+    detail: `${CANVAS_MANUAL_WORKFLOW_WARNING}.`,
+    state: "Manual workflow"
   }));
 
   container.append(createInstructorMaterialRow({

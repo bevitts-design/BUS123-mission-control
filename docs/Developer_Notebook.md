@@ -93,7 +93,7 @@ A lesson can be ready to teach without every optional publishing enhancement bei
 - **Ready to Teach** means the required student files exist, the Instructor Notes Guide exists, and a required answer key or completed file exists.
 - **Publishing status** shows whether the website files are ready, whether Canvas status is connected, and whether a QTI package is available.
 
-Canvas and QTI are visible warnings in this first version. They do not block **Ready to Teach** because those integrations are not required for every lesson yet.
+Canvas and QTI are visible warnings in this first version. The Canvas automated connection is unavailable because institutional admin restrictions prevent token access, so Canvas publishing and verification remain a manual workflow. This limitation does not block **Ready to Teach**. QTI availability also remains non-blocking because a quiz is not required for every lesson.
 
 The readiness calculation currently runs in `assets/mission-control.js` using evidence already returned for the selected lesson. A later shared-core increment can move the rule into one reusable module for the Desktop and Web Editions.
 
@@ -102,7 +102,7 @@ The readiness calculation currently runs in `assets/mission-control.js` using ev
 1. Restart Mission Control and select a lesson in **Instructor**.
 2. Open **Lesson Workspace**.
 3. Confirm **Website** reflects whether all listed public files exist.
-4. Confirm **Canvas** says **Not connected**.
+4. Confirm **Canvas** says **Manual workflow** and explains the institutional token restriction.
 5. Confirm **Canvas New Quiz / QTI** reflects the private lesson folder.
 6. Confirm **Overall Readiness** lists the blocking Student or Instructor Package items.
 
@@ -134,3 +134,4 @@ The source-of-truth alignment sprint moved the policy into `core/readiness.mjs`.
 - One or two blocking issues produce **Needs Work**.
 - No blocking issues produce **Ready to Teach**.
 - Optional interactive, Canvas, and QTI gaps remain visible warnings without changing teaching readiness.
+- Canvas automation remains unavailable while institutional admin restrictions prevent token access; use the manual Canvas workflow and keep this condition visible as a warning.
