@@ -116,3 +116,9 @@ The repair adds two separate functions:
 - `renderCanvasWeekAhead()` creates the visible summary and event rows safely with DOM elements.
 
 This is why regression testing checks nearby features, not only the new feature. A page may look mostly correct while a browser-console error prevents one part from loading.
+
+## Lesson 6: Identifiers prevent cross-course file matches
+
+The first Instructor Notes Guide exposed a Course Health matching issue. A generic filename token such as `M01-L01` can occur in Intro, Excel, and other tracks, so it is not specific enough to associate a private file with a lesson.
+
+Course Health now matches private files with the complete lesson identity, such as `intro-m01-l01` or `math-m04-l01`. Stable, track-aware identifiers prevent an Excel answer key from being reported as an Intro answer key simply because both lessons share the same module and lesson numbers.

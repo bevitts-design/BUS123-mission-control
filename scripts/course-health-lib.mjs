@@ -42,7 +42,6 @@ function lessonTokens(lesson) {
   return [
     lesson.id,
     `${lesson.track}-${lesson.module}-${lesson.lesson}`,
-    `${lesson.module}-${lesson.lesson}`,
     lesson.title
   ].map(normalize).filter(Boolean);
 }
