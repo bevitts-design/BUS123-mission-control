@@ -15,6 +15,16 @@ assert.equal(intro.status, "Ready to Teach");
 assert.deepEqual(intro.blocking, []);
 assert.ok(intro.warnings.includes("Canvas status not yet connected"));
 
+const companyOverview = evaluateLessonReadiness({
+  track: "intro",
+  publicArtifacts: [{ type: "Company Profiles", path: "company-profiles.html", exists: true }],
+  instructorNotes: true
+});
+assert.equal(companyOverview.status, "Ready to Teach");
+assert.deepEqual(companyOverview.blocking, []);
+assert.equal(companyOverview.student.primary, true);
+assert.equal(companyOverview.student.slides, false);
+
 const math = evaluateLessonReadiness({
   track: "math",
   publicArtifacts: [
@@ -49,6 +59,7 @@ const student = classifyStudentMaterials([
   { type: "Interactive" }
 ]);
 assert.deepEqual(student, {
+  primary: true,
   slides: true,
   reading: true,
   workbook: true,
@@ -56,6 +67,7 @@ assert.deepEqual(student, {
   assignment: false
 });
 assert.equal(isAnswerKeyRequired(student), true);
+assert.deepEqual(requiredStudentComponents("intro"), { primary: true });
 assert.deepEqual(requiredStudentComponents("excel"), { slides: true, reading: true, workbook: true });
 
 console.log("Shared readiness tests passed.");

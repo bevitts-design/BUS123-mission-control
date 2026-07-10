@@ -1,6 +1,6 @@
 export const READINESS_POLICY = Object.freeze({
   trackRequirements: Object.freeze({
-    intro: Object.freeze({ slides: true }),
+    intro: Object.freeze({ primary: true }),
     math: Object.freeze({ slides: true, reading: true, workbook: true }),
     excel: Object.freeze({ slides: true, reading: true, workbook: true }),
     capstone: Object.freeze({ assignment: true, workbook: true })
@@ -17,8 +17,11 @@ function normalize(value) {
 
 export function classifyStudentMaterials(artifacts = []) {
   const types = new Set(artifacts.map((artifact) => normalize(artifact.type)));
+  const slides = [...types].some((type) => type.includes("slide"));
+  const companyProfiles = [...types].some((type) => type.includes("company-profile"));
   return {
-    slides: [...types].some((type) => type.includes("slide")),
+    primary: slides || companyProfiles,
+    slides,
     reading: [...types].some((type) => type.includes("reading")),
     workbook: [...types].some((type) => type.includes("workbook") || type.includes("excel")),
     interactive: [...types].some((type) => type.includes("interactive")),
@@ -54,7 +57,8 @@ export function evaluateLessonReadiness({
   const warnings = [];
 
   for (const [component, isRequired] of Object.entries(required)) {
-    if (isRequired && !student[component]) blocking.push(`Student ${component} is not listed`);
+    const label = component === "primary" ? "primary teaching material" : component;
+    if (isRequired && !student[component]) blocking.push(`Student ${label} is not listed`);
   }
 
   for (const artifact of publicArtifacts) {

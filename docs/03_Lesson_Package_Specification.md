@@ -90,6 +90,8 @@ Minimum Instructor Ready requirements:
 - common student mistakes or teaching tips are documented
 - Canvas/QTI status is known, even if not complete
 
+For INTRO lessons, the required primary student teaching material may be either a slide deck or a purpose-built company-profiles overview. The readiness check must preserve that distinction rather than reporting a profiles page as slides.
+
 ---
 
 ## 3. Publishing Package
