@@ -12,6 +12,7 @@
       <div class="brand-mark">B123</div>
       <nav>
         <a class="active" href="#today" data-view-link="today">Today</a>
+        <a href="#lesson-workspace" data-view-link="lesson-workspace">Lesson Workspace</a>
         <a href="#instructor" data-view-link="instructor">Instructor</a>
         <a href="#materials" data-view-link="materials">Materials</a>
         <a href="#grading" data-view-link="grading">Grading</a>
@@ -90,6 +91,22 @@
           </div>
           <div class="next-lessons" id="nextLessons"></div>
         </section>
+      </section>
+
+      <section id="lesson-workspace" class="view">
+        <div class="panel-heading">
+          <span class="status draft">Milestone 2</span>
+          <span>Lesson Workspace</span>
+        </div>
+        <article class="panel">
+          <h2>Lesson Workspace</h2>
+          <p>This will become the primary workspace for preparing and teaching a lesson.</p>
+          <p>The next version will show the selected lesson's Student Package, Instructor Package, Publishing status, and Course Health.</p>
+          <div class="button-row">
+            <button data-view-target="instructor">Choose a Lesson</button>
+            <button data-build-tool="lesson-readiness">Check Lesson Readiness</button>
+          </div>
+        </article>
       </section>
 
       <section id="instructor" class="view instructor-panel">
@@ -308,6 +325,6 @@
       </section>
     </section>
   </main>
-  <script src="assets/mission-control.js?v=grading-launcher-1"></script>
+  <script src="assets/mission-control.js?v=lesson-workspace-placeholder-1"></script>
 </body>
 </html>
