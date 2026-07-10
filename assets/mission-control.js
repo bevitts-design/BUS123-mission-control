@@ -141,6 +141,14 @@ function flattenedLessons(dashboard) {
   return dashboard.modules.flatMap((module) => module.lessons.map((lesson) => ({ ...lesson, moduleId: module.id })));
 }
 
+function selectedLesson(dashboard) {
+  const lessons = flattenedLessons(dashboard);
+  return lessons.find((lesson) => lesson.id === instructorState.selectedLessonId)
+    || dashboard.currentLesson
+    || lessons[0]
+    || null;
+}
+
 function populateSelect(select, values, allLabel) {
   const current = select.value || "all";
   select.innerHTML = `<option value="all">${allLabel}</option>`;
@@ -300,10 +308,7 @@ function summarizeLessonPrivateArtifacts(lesson) {
 function renderCurrentPrep(dashboard) {
   const lessons = flattenedLessons(dashboard);
   instructorState.lessons = lessons;
-  const selected = lessons.find((lesson) => lesson.id === instructorState.selectedLessonId)
-    || dashboard.currentLesson
-    || lessons[0]
-    || null;
+  const selected = selectedLesson(dashboard);
   if (!selected) return;
   instructorState.currentLessonId = selected.id;
   instructorState.currentFolderId = selected.instructorFolderId || "";
@@ -322,6 +327,61 @@ function renderCurrentPrep(dashboard) {
   if (setCurrent) setCurrent.disabled = selected.isCurrent;
   const openFolder = document.querySelector("#openCurrentInstructorFolder");
   if (openFolder) openFolder.disabled = !selected.instructorFolderId;
+}
+
+function renderLessonWorkspace(dashboard) {
+  const lesson = selectedLesson(dashboard);
+  const title = document.querySelector("#lessonWorkspaceTitle");
+  const key = document.querySelector("#lessonWorkspaceKey");
+  const meta = document.querySelector("#lessonWorkspaceMeta");
+  const list = document.querySelector("#lessonWorkspaceStudentMaterials");
+  if (!title || !key || !meta || !list) return;
+
+  if (!lesson) {
+    key.textContent = "No lesson selected";
+    title.textContent = "Lesson Workspace";
+    meta.textContent = "Choose a lesson from the Instructor view.";
+    list.textContent = "No student materials to display.";
+    return;
+  }
+
+  key.textContent = lesson.key;
+  title.textContent = lesson.title;
+  meta.textContent = [
+    lesson.status,
+    lesson.caseStudy,
+    `${lesson.materialCount} student material${lesson.materialCount === 1 ? "" : "s"}`
+  ].filter(Boolean).join(" · ");
+
+  list.innerHTML = "";
+  if (!lesson.publicArtifacts?.length) {
+    list.textContent = "No student materials are listed in the course map.";
+    return;
+  }
+
+  for (const artifact of lesson.publicArtifacts) {
+    const row = document.createElement("div");
+    row.className = "workspace-material-row";
+
+    const details = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = artifact.type;
+    const path = document.createElement("span");
+    path.textContent = artifact.path || "No file path listed";
+    details.append(name, path);
+
+    const status = document.createElement(artifact.url ? "a" : "span");
+    status.className = `pill ${artifact.exists ? "ready" : "review"}`;
+    status.textContent = artifact.exists ? "Open" : "Missing";
+    if (artifact.url) {
+      status.href = artifact.url;
+      status.target = "_blank";
+      status.rel = "noreferrer";
+    }
+
+    row.append(details, status);
+    list.append(row);
+  }
 }
 
 function renderModuleDashboard(dashboard) {
@@ -379,6 +439,7 @@ function renderInstructorDashboard(dashboard) {
   });
 
   renderCurrentPrep(dashboard);
+  renderLessonWorkspace(dashboard);
 
   const canvasItems = dashboard.modules
     .flatMap((module) => module.lessons)

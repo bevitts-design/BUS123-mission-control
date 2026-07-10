@@ -269,20 +269,28 @@ async function getInstructorDashboard() {
         && (item.lesson === lessonValue || item.lesson === "unassigned");
     });
     const missingPublic = [];
+    const publicArtifacts = [];
 
     for (const material of publicMaterials) {
       const materialPath = join(targets.publicRepo, material.path || "");
+      let exists = false;
       if (!material.path || !isPathInside(materialPath, targets.publicRepo)) {
         missingPublic.push(material.type || "Material");
-        continue;
+      } else {
+        try {
+          exists = (await stat(materialPath)).isFile();
+        } catch {}
+        if (!exists) missingPublic.push(material.type || basename(material.path || "material"));
       }
 
-      try {
-        const materialStat = await stat(materialPath);
-        if (!materialStat.isFile()) missingPublic.push(material.type || basename(material.path));
-      } catch {
-        missingPublic.push(material.type || basename(material.path || "material"));
-      }
+      publicArtifacts.push({
+        type: material.type || "Material",
+        path: material.path || "",
+        exists,
+        url: exists
+          ? `${targets.publicSite}${String(material.path).split("/").map(encodeURIComponent).join("/")}`
+          : ""
+      });
     }
 
     const instructorFolder = join(targets.instructorRepo, trackFolder, lesson.module || "");
@@ -301,6 +309,7 @@ async function getInstructorDashboard() {
       caseStudy: lesson.caseStudy,
       skillFocus: lesson.skillFocus ?? [],
       materialCount: publicMaterials.length,
+      publicArtifacts,
       missingPublic,
       privateArtifactCount: privateArtifacts.length,
       privateArtifactsByType: summarizeArtifacts(privateArtifacts),

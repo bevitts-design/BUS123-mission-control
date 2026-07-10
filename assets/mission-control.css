@@ -167,6 +167,41 @@ p {
   margin-top: 0.5rem;
 }
 
+.workspace-material-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.workspace-material-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+
+.workspace-material-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.workspace-material-row div {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.workspace-material-row span:not(.pill) {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.workspace-material-row a.pill {
+  text-decoration: none;
+}
+
 .grid-two {
   grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
 }
@@ -721,7 +756,8 @@ th {
   .instructor-workbench,
   .lesson-detail,
   .instructor-summary,
-  .next-lessons {
+  .next-lessons,
+  .lesson-package-preview {
     grid-template-columns: 1fr;
   }
 
