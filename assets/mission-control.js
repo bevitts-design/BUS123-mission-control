@@ -336,7 +336,8 @@ function renderLessonWorkspace(dashboard) {
   const meta = document.querySelector("#lessonWorkspaceMeta");
   const list = document.querySelector("#lessonWorkspaceStudentMaterials");
   const instructorList = document.querySelector("#lessonWorkspaceInstructorMaterials");
-  if (!title || !key || !meta || !list || !instructorList) return;
+  const publishingList = document.querySelector("#lessonWorkspacePublishingStatus");
+  if (!title || !key || !meta || !list || !instructorList || !publishingList) return;
 
   if (!lesson) {
     key.textContent = "No lesson selected";
@@ -344,6 +345,7 @@ function renderLessonWorkspace(dashboard) {
     meta.textContent = "Choose a lesson from the Instructor view.";
     list.textContent = "No student materials to display.";
     instructorList.textContent = "No instructor materials to display.";
+    publishingList.textContent = "No publishing status to display.";
     return;
   }
 
@@ -357,6 +359,7 @@ function renderLessonWorkspace(dashboard) {
 
   list.innerHTML = "";
   renderInstructorPackage(lesson, instructorList);
+  renderPublishingPackage(lesson, publishingList);
   if (!lesson.publicArtifacts?.length) {
     list.textContent = "No student materials are listed in the course map.";
     return;
@@ -388,6 +391,12 @@ function renderLessonWorkspace(dashboard) {
 
 }
 
+function workspacePillClass(state) {
+  if (["Available", "Ready", "Ready to Teach"].includes(state)) return "ready";
+  if (["Missing", "Needs Work", "Not Ready"].includes(state)) return "review";
+  return "type";
+}
+
 function createInstructorMaterialRow({ label, detail, state, materialId = "" }) {
   const row = document.createElement("div");
   row.className = "workspace-material-row";
@@ -400,7 +409,7 @@ function createInstructorMaterialRow({ label, detail, state, materialId = "" }) 
   details.append(name, meta);
 
   const status = document.createElement(materialId ? "button" : "span");
-  status.className = `pill ${state === "Available" ? "ready" : state === "Missing" ? "review" : "type"}`;
+  status.className = `pill ${workspacePillClass(state)}`;
   status.textContent = materialId ? "Open" : state;
   if (materialId) {
     status.type = "button";
@@ -446,6 +455,68 @@ function renderInstructorPackage(lesson, container) {
       materialId: artifact.id
     }));
   }
+}
+
+function lessonReadiness(lesson) {
+  const publicArtifacts = lesson.publicArtifacts || [];
+  const privateArtifacts = lesson.privateArtifacts || [];
+  const notes = privateArtifacts.some((artifact) => artifact.type === "instructor-notes");
+  const answerTypes = new Set(["activity-key", "solution", "completed"]);
+  const answer = privateArtifacts.some((artifact) => answerTypes.has(artifact.type));
+  const answerRequired = publicArtifacts.some((artifact) => {
+    const type = String(artifact.type || "").toLowerCase();
+    return ["workbook", "excel", "assignment", "project", "homework", "interactive"]
+      .some((keyword) => type.includes(keyword));
+  });
+
+  const blocking = [];
+  if (!publicArtifacts.length) blocking.push("No student materials listed");
+  if (publicArtifacts.some((artifact) => !artifact.exists)) blocking.push("Student file missing");
+  if (!notes) blocking.push("Instructor Notes Guide missing");
+  if (answerRequired && !answer) blocking.push("Required answer key missing");
+
+  return {
+    blocking,
+    status: blocking.length ? "Needs Work" : "Ready to Teach"
+  };
+}
+
+function renderPublishingPackage(lesson, container) {
+  container.innerHTML = "";
+  const publicArtifacts = lesson.publicArtifacts || [];
+  const websiteReady = publicArtifacts.length > 0 && publicArtifacts.every((artifact) => artifact.exists);
+  const qti = (lesson.privateArtifacts || []).find((artifact) => artifact.type === "qti");
+  const readiness = lessonReadiness(lesson);
+
+  container.append(createInstructorMaterialRow({
+    label: "Website",
+    detail: websiteReady
+      ? "All listed student files are available"
+      : publicArtifacts.length
+        ? `${lesson.missingPublic?.length || 0} listed student file${lesson.missingPublic?.length === 1 ? "" : "s"} missing`
+        : "No student materials are listed in the course map",
+    state: websiteReady ? "Ready" : "Needs Work"
+  }));
+
+  container.append(createInstructorMaterialRow({
+    label: "Canvas",
+    detail: "Canvas publishing status is not connected yet",
+    state: "Not connected"
+  }));
+
+  container.append(createInstructorMaterialRow({
+    label: "Canvas New Quiz / QTI",
+    detail: qti?.relativePath || "No QTI package found in the private lesson folder",
+    state: qti ? "Available" : "Not generated"
+  }));
+
+  container.append(createInstructorMaterialRow({
+    label: "Overall Readiness",
+    detail: readiness.blocking.length
+      ? readiness.blocking.join("; ")
+      : "Required Student and Instructor Package components are available",
+    state: readiness.status
+  }));
 }
 
 function renderModuleDashboard(dashboard) {

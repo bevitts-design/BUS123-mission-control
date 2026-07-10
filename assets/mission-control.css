@@ -208,6 +208,12 @@ p {
   padding: 0.3rem 0.55rem;
 }
 
+#lessonWorkspacePublishingStatus .workspace-material-row:last-child {
+  margin-top: 0.25rem;
+  border-top-color: #4a5262;
+  padding-top: 0.75rem;
+}
+
 .grid-two {
   grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
 }

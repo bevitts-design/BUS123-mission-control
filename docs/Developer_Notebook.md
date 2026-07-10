@@ -85,3 +85,23 @@ Mission Control now recognizes Markdown instructor guides as well as Word guides
 3. Open **Lesson Workspace** and confirm the key appears as available.
 4. Select **Open** and confirm the private file opens locally.
 5. Confirm lessons without an Instructor Notes Guide display **Missing** rather than exposing a broken link.
+
+## Lesson 4: Readiness versus publishing completeness
+
+A lesson can be ready to teach without every optional publishing enhancement being finished. The Publishing Package therefore reports two related ideas separately:
+
+- **Ready to Teach** means the required student files exist, the Instructor Notes Guide exists, and a required answer key or completed file exists.
+- **Publishing status** shows whether the website files are ready, whether Canvas status is connected, and whether a QTI package is available.
+
+Canvas and QTI are visible warnings in this first version. They do not block **Ready to Teach** because those integrations are not required for every lesson yet.
+
+The readiness calculation currently runs in `assets/mission-control.js` using evidence already returned for the selected lesson. A later shared-core increment can move the rule into one reusable module for the Desktop and Web Editions.
+
+### Test for this increment
+
+1. Restart Mission Control and select a lesson in **Instructor**.
+2. Open **Lesson Workspace**.
+3. Confirm **Website** reflects whether all listed public files exist.
+4. Confirm **Canvas** says **Not connected**.
+5. Confirm **Canvas New Quiz / QTI** reflects the private lesson folder.
+6. Confirm **Overall Readiness** lists the blocking Student or Instructor Package items.
