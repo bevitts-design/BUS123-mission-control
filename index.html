@@ -12,8 +12,10 @@
       <div class="brand-mark">B123</div>
       <nav>
         <a class="active" href="#today" data-view-link="today">Today</a>
+        <a href="#teach-this-week" data-view-link="teach-this-week">Teach This Week</a>
         <a href="#lesson-workspace" data-view-link="lesson-workspace">Lesson Workspace</a>
         <a href="#instructor" data-view-link="instructor">Instructor</a>
+        <a href="#visibility-publishing" data-view-link="visibility-publishing">Visibility &amp; Publish</a>
         <a href="#materials" data-view-link="materials">Materials</a>
         <a href="#grading" data-view-link="grading">Grading</a>
         <a href="#course-map" data-view-link="course-map">Course Map</a>
@@ -47,6 +49,7 @@
             <p id="todayLessonMeta">Loading current lesson, prep status, and instructor readiness.</p>
             <div class="command-row">
               <button data-build-tool="open-teaching-bundle">Open Teaching Bundle</button>
+              <button data-view-target="teach-this-week">Teach This Week</button>
               <button data-action="openTodayInstructorFolder" id="todayOpenInstructorFolder" disabled>Instructor Folder</button>
               <button data-view-target="instructor">Prep Notes</button>
               <button data-build-tool="validate-public">Validate Public</button>
@@ -91,6 +94,56 @@
           </div>
           <div class="next-lessons" id="nextLessons"></div>
         </section>
+      </section>
+
+      <section id="teach-this-week" class="view teaching-week-panel" aria-labelledby="teachWeekTitle">
+        <div class="panel-heading">
+          <span class="status live">Weekly Focus</span>
+          <span>Teach This Week</span>
+        </div>
+
+        <div class="teach-week-hero">
+          <div>
+            <p class="eyebrow">Current plus next two lessons</p>
+            <h2 id="teachWeekTitle">Prepare each class in one calm sequence</h2>
+            <p id="teachWeekScope">Loading the maintained course-map order and current readiness…</p>
+          </div>
+          <button type="button" data-action="refreshTeachingWeek" id="refreshTeachingWeekButton">Refresh Weekly Plan</button>
+        </div>
+
+        <div class="manual-canvas-banner" role="note">
+          <strong>Canvas stays manual</strong>
+          <span>Mission Control can show the maintained week-ahead snapshot and open Canvas, but it does not upload, publish, or verify Canvas for you.</span>
+        </div>
+
+        <div id="teachWeekNotice" class="workflow-notice" aria-live="polite" hidden></div>
+
+        <div class="teach-week-layout">
+          <section aria-labelledby="weeklyLessonsTitle">
+            <div class="section-head weekly-section-head">
+              <div>
+                <p class="eyebrow">Guided preparation</p>
+                <h2 id="weeklyLessonsTitle">Per-class checklist</h2>
+              </div>
+              <span id="teachWeekLessonCount" class="weekly-count">Loading…</span>
+            </div>
+            <div id="teachWeekLessons" class="weekly-lessons" aria-live="polite" aria-busy="true">
+              <article class="weekly-loading">Loading current and near-term lesson readiness…</article>
+            </div>
+          </section>
+
+          <aside class="exception-panel" aria-labelledby="exceptionQueueTitle">
+            <div class="exception-panel-heading">
+              <div>
+                <p class="eyebrow">Only work that needs attention</p>
+                <h2 id="exceptionQueueTitle">Exception Queue</h2>
+              </div>
+              <span id="exceptionCount" class="exception-count">—</span>
+            </div>
+            <p id="exceptionSummary">Loading actionable blockers and time-sensitive gaps…</p>
+            <div id="exceptionQueue" class="exception-queue" aria-live="polite" aria-busy="true"></div>
+          </aside>
+        </div>
       </section>
 
       <section id="lesson-workspace" class="view lesson-workspace-placeholder">
@@ -174,7 +227,7 @@
               <div class="button-row">
                 <button data-action="savePrepNotes">Save Notes</button>
                 <button data-action="setCurrentLesson" id="setCurrentLessonButton" disabled>Make Current</button>
-                <button data-action="publishCourseMap" id="publishCourseMapButton">Publish to GitHub</button>
+                <button data-view-target="visibility-publishing">Review Visibility &amp; Publishing</button>
                 <button data-action="openCurrentInstructorFolder" id="openCurrentInstructorFolder" disabled>Open Instructor Folder</button>
               </div>
             </article>
@@ -196,6 +249,77 @@
             </article>
           </section>
         </div>
+      </section>
+
+      <section id="visibility-publishing" class="view visibility-panel">
+        <div class="panel-heading">
+          <span class="status live">Student Site</span>
+          <span>Visibility &amp; Publishing</span>
+        </div>
+        <div class="console-head visibility-console-head">
+          <div>
+            <h2>Choose what students can see, then publish only after review</h2>
+            <p>Visibility switches create a local draft first. Save and Rebuild updates the public source and local preview; GitHub publication remains a separate confirmed workflow.</p>
+          </div>
+          <button data-action="refreshVisibility" id="refreshVisibilityButton">Reload Course Map</button>
+        </div>
+
+        <div class="safety-banner" role="note">
+          <strong>Two separate safety gates</strong>
+          <span>1. Review pending lesson changes before Save and Rebuild. 2. Run publishing preflight and confirm the exact Git scope before any commit or push.</span>
+        </div>
+        <div id="visibilityNotice" class="workflow-notice" aria-live="polite" hidden></div>
+
+        <div class="visibility-workbench">
+          <div class="visibility-catalog">
+            <div class="visibility-toolbar">
+              <label class="visibility-search">
+                Search lessons
+                <input id="visibilitySearch" type="search" placeholder="Search title, code, track, module, case, or status" autocomplete="off">
+              </label>
+              <div class="visibility-count" id="visibilityCount">Loading lesson visibility…</div>
+            </div>
+            <div id="visibilityGroups" class="visibility-groups" aria-live="polite"></div>
+          </div>
+
+          <aside class="pending-preview" aria-labelledby="pendingVisibilityTitle">
+            <div>
+              <p class="eyebrow">Local draft</p>
+              <h3 id="pendingVisibilityTitle">Review Before Save</h3>
+              <p>Only the listed lessons’ <code>visible</code> value will change.</p>
+            </div>
+            <div id="pendingVisibilitySummary" class="pending-summary">No pending changes.</div>
+            <div id="pendingVisibilityList" class="pending-list"></div>
+            <div class="pending-actions">
+              <button data-action="saveVisibility" id="saveVisibilityButton" disabled>Save and Rebuild</button>
+              <button data-action="discardVisibility" id="discardVisibilityButton" disabled>Discard Draft</button>
+            </div>
+            <small>Saving never commits or pushes. The student preview is rebuilt locally for inspection.</small>
+          </aside>
+        </div>
+
+        <section class="publish-workflow" aria-labelledby="publishWorkflowTitle">
+          <div class="publish-heading">
+            <div>
+              <p class="eyebrow">Separate GitHub workflow</p>
+              <h2 id="publishWorkflowTitle">Publishing Preflight</h2>
+              <p>Preflight rebuilds and validates, fetches <code>origin/main</code>, checks synchronization, and shows every included and excluded path. It does not stage, commit, or push.</p>
+            </div>
+            <button data-action="runPublishPreflight" id="runPublishPreflightButton">Run Publishing Preflight</button>
+          </div>
+          <div id="publishNotice" class="workflow-notice" aria-live="polite" hidden></div>
+          <div id="publishPreflight" class="preflight-content">
+            <div class="preflight-empty">Preflight has not run. Save or discard any lesson-visibility draft, then review the repository state.</div>
+          </div>
+          <div class="publish-confirm-row">
+            <label>
+              Commit message
+              <input id="publishCommitMessage" value="Update BUS123 lesson visibility" maxlength="120">
+            </label>
+            <button data-action="requestCoursePublish" id="requestCoursePublishButton" disabled>Review and Publish…</button>
+          </div>
+          <small>A successful push means GitHub received <code>main</code>. GitHub Pages deployment is separate and may still be running.</small>
+        </section>
       </section>
 
       <section id="materials" class="view">
@@ -345,6 +469,20 @@
       </section>
     </section>
   </main>
-  <script type="module" src="assets/mission-control.js?v=shared-readiness-1"></script>
+
+  <dialog id="publishConfirmationDialog" class="publish-dialog" aria-labelledby="publishConfirmationTitle">
+    <div class="dialog-content">
+      <p class="eyebrow">Final confirmation</p>
+      <h2 id="publishConfirmationTitle">Commit and push the reviewed BUS123 scope?</h2>
+      <p id="publishConfirmationSummary">Mission Control will re-run preflight, stage only the reviewed paths, create one commit, and push main.</p>
+      <div id="publishConfirmationPaths" class="confirmation-paths"></div>
+      <div class="dialog-actions">
+        <button type="button" data-action="cancelCoursePublish">Cancel</button>
+        <button type="button" data-action="confirmCoursePublish" class="danger-action">Commit and Push Main</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module" src="assets/mission-control.js?v=teach-this-week-1"></script>
 </body>
 </html>

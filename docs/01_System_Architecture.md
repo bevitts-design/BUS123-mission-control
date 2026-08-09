@@ -38,11 +38,19 @@ Course operating system repository. Contains configuration, documentation, struc
 ## Canonical Data Sources
 
 - Mission Control `course.yaml` — global course configuration and repository roles.
-- Public repository `course-map.json` — authoritative lesson catalog, current lesson, ordering, public metadata, and student-material paths.
+- Public repository `course-map.json` — authoritative lesson catalog, current lesson, ordering, lesson visibility, public metadata, and student-material paths. Lessons are visible by default and are omitted from the generated homepage only when `visible` is explicitly `false`.
 - Mission Control `core/readiness.mjs` — authoritative readiness policy and evaluation logic shared by the validator and Lesson Workspace.
+- Mission Control `core/teaching-week.mjs` — pure weekly projection that selects the current lesson plus the next two lessons in course-map order, applies the shared readiness policy, associates exact private graders, and builds a focused exception queue. It does not persist lesson state.
 - Private instructor lesson folders — authoritative instructor notes, answer keys, QTI packages, and other private teaching artifacts.
+- Public `assets/canvas-week-ahead.json` — maintained read-only Canvas calendar snapshot. Its freshness is surfaced for manual review; it is not proof of Canvas publication or an automated Canvas connection.
 
 CSV, JSON reports, and Markdown inventories may be generated for review or export, but they are derived artifacts and must not become competing editable lesson catalogs.
+
+## Weekly Teaching Projection
+
+`GET /api/teaching/week` derives a disposable teaching plan at request time from the instructor dashboard, private grading registry, and Canvas week-ahead snapshot. The browser overlays the existing per-lesson local prep record for prep status and after-class handoff. Neither the endpoint nor the view writes course-map, visibility, public output, Canvas, or Git state.
+
+The exception queue is intentionally narrower than a status dashboard: it includes required package gaps, near-term release or visibility issues, stale Canvas context, explicit local prep gaps, and unconfirmed activity/grader plans. Ready routine items stay in the per-class checklist.
 
 ## Lesson as Atomic Unit
 

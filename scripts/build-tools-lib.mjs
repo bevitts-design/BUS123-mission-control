@@ -104,6 +104,10 @@ export async function validatePublicMaterials({ publicRoot }) {
       warnings.push(issue("warning", `Lesson ${lesson.id || "(missing id)"} has no release status.`));
     }
 
+    if (lesson.visible !== undefined && typeof lesson.visible !== "boolean") {
+      errors.push(issue("error", `Lesson ${lesson.id || "(missing id)"} visibility must be true or false.`));
+    }
+
     for (const material of lesson.materials ?? []) {
       if (!material.path) {
         errors.push(issue("error", `Lesson ${lesson.id || "(missing id)"} has a material without a path.`));
@@ -126,6 +130,8 @@ export async function validatePublicMaterials({ publicRoot }) {
     warnings.push(issue("warning", "No current lesson is selected."));
   } else if (!seenLessonIds.has(data.course.currentLessonId)) {
     errors.push(issue("error", `Current lesson id does not exist: ${data.course.currentLessonId}`));
+  } else if ((lessons.find((lesson) => lesson.id === data.course.currentLessonId))?.visible === false) {
+    errors.push(issue("error", "The current lesson cannot be hidden from the student homepage."));
   }
 
   for (const filePath of await walkFiles(publicRoot)) {

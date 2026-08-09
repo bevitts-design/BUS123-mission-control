@@ -6,7 +6,7 @@ import {
 } from "../core/readiness.mjs";
 
 const log = document.querySelector("#log");
-const API_BASE = window.location.hostname === "127.0.0.1" && window.location.port === "8123"
+const API_BASE = ["http:", "https:"].includes(window.location.protocol)
   ? ""
   : "http://localhost:8123";
 const materialState = {
@@ -24,6 +24,17 @@ const instructorState = {
 const gradingState = {
   activities: []
 };
+const teachingState = {
+  data: null,
+  loading: false,
+  error: ""
+};
+const visibilityState = {
+  snapshot: null,
+  draft: new Map(),
+  search: "",
+  preflight: null
+};
 
 const actions = {
   "open-canvas": { kind: "navigate", url: "https://endicott.instructure.com/courses/58218" },
@@ -39,9 +50,17 @@ const actions = {
   "run-grading": { kind: "grading" },
   "refresh-materials": { kind: "refreshMaterials" },
   "refreshInstructor": { kind: "refreshInstructor" },
+  "refreshTeachingWeek": { kind: "refreshTeachingWeek" },
   "savePrepNotes": { kind: "savePrepNotes" },
+  "saveAfterClassHandoff": { kind: "saveAfterClassHandoff" },
   "setCurrentLesson": { kind: "setCurrentLesson" },
-  "publishCourseMap": { kind: "publishCourseMap" },
+  "refreshVisibility": { kind: "refreshVisibility" },
+  "saveVisibility": { kind: "saveVisibility" },
+  "discardVisibility": { kind: "discardVisibility" },
+  "runPublishPreflight": { kind: "runPublishPreflight" },
+  "requestCoursePublish": { kind: "requestCoursePublish" },
+  "confirmCoursePublish": { kind: "confirmCoursePublish" },
+  "cancelCoursePublish": { kind: "cancelCoursePublish" },
   "openCurrentInstructorFolder": { kind: "openInstructorFolder" },
   "openTodayInstructorFolder": { kind: "openTodayInstructorFolder" }
 };
@@ -99,7 +118,9 @@ async function postJson(url, payload) {
   });
   const data = await parseJsonResponse(response);
   if (!response.ok) {
-    throw new Error(data.error || "Request failed.");
+    const error = new Error(data.error || "Request failed.");
+    error.data = data;
+    throw error;
   }
   return data;
 }
@@ -154,6 +175,318 @@ function selectedLesson(dashboard) {
     || dashboard.currentLesson
     || lessons[0]
     || null;
+}
+
+function setWorkflowNotice(id, message = "", state = "info") {
+  const notice = document.querySelector(`#${id}`);
+  if (!notice) return;
+  notice.hidden = !message;
+  notice.textContent = message;
+  notice.dataset.state = state;
+}
+
+function visibilityPendingChanges() {
+  if (!visibilityState.snapshot) return [];
+  return visibilityState.snapshot.lessons
+    .map((lesson) => ({
+      lesson,
+      visible: visibilityState.draft.get(lesson.id) ?? lesson.visible
+    }))
+    .filter(({ lesson, visible }) => visible !== lesson.visible);
+}
+
+function visibleAfterSaveCount() {
+  if (!visibilityState.snapshot) return 0;
+  return visibilityState.snapshot.lessons
+    .filter((lesson) => visibilityState.draft.get(lesson.id) ?? lesson.visible)
+    .length;
+}
+
+function invalidatePublishPreflight() {
+  visibilityState.preflight = null;
+  setWorkflowNotice("publishNotice");
+  renderPublishPreflight();
+}
+
+function setVisibilitySnapshot(snapshot) {
+  visibilityState.snapshot = snapshot;
+  visibilityState.draft = new Map(snapshot.lessons.map((lesson) => [lesson.id, lesson.visible]));
+  visibilityState.preflight = null;
+  setWorkflowNotice("publishNotice");
+  renderVisibility();
+  renderPublishPreflight();
+}
+
+function lessonMatchesVisibilitySearch(lesson, group, query) {
+  if (!query) return true;
+  return [
+    lesson.key,
+    lesson.title,
+    lesson.status,
+    lesson.trackLabel,
+    lesson.module,
+    lesson.caseStudy,
+    ...(lesson.skillFocus || []),
+    group.label
+  ].filter(Boolean).join(" ").toLowerCase().includes(query);
+}
+
+function visibilityBadge(label, state = "") {
+  const badge = document.createElement("span");
+  badge.className = `visibility-status ${state}`.trim();
+  badge.textContent = label;
+  return badge;
+}
+
+function renderVisibilityGroups() {
+  const container = document.querySelector("#visibilityGroups");
+  const count = document.querySelector("#visibilityCount");
+  if (!container || !count) return;
+  container.innerHTML = "";
+
+  const snapshot = visibilityState.snapshot;
+  if (!snapshot) {
+    count.textContent = "Course map unavailable";
+    container.textContent = "Mission Control could not load lesson visibility.";
+    return;
+  }
+
+  const query = visibilityState.search.trim().toLowerCase();
+  let shown = 0;
+  for (const group of snapshot.groups) {
+    const lessons = group.lessons.filter((lesson) => lessonMatchesVisibilitySearch(lesson, group, query));
+    if (!lessons.length) continue;
+    shown += lessons.length;
+
+    const section = document.createElement("section");
+    section.className = "visibility-group";
+    const heading = document.createElement("div");
+    heading.className = "visibility-group-heading";
+    const title = document.createElement("h3");
+    title.textContent = group.label;
+    const groupCount = document.createElement("span");
+    groupCount.textContent = `${lessons.length} lesson${lessons.length === 1 ? "" : "s"}`;
+    heading.append(title, groupCount);
+    section.append(heading);
+
+    for (const lesson of lessons) {
+      const desiredVisible = visibilityState.draft.get(lesson.id) ?? lesson.visible;
+      const changed = desiredVisible !== lesson.visible;
+      const card = document.createElement("article");
+      card.className = `visibility-card${changed ? " pending-change" : ""}`;
+
+      const details = document.createElement("div");
+      const badges = document.createElement("div");
+      badges.className = "visibility-card-badges";
+      badges.append(visibilityBadge(lesson.status));
+      if (lesson.isCurrent) badges.append(visibilityBadge("Current lesson", "current"));
+      badges.append(visibilityBadge(desiredVisible ? "Visible after save" : "Hidden after save", desiredVisible ? "visible" : "hidden"));
+      const name = document.createElement("h4");
+      name.textContent = lesson.title;
+      const meta = document.createElement("p");
+      meta.textContent = [lesson.key, lesson.caseStudy, changed ? "Pending local change" : "Matches saved source"]
+        .filter(Boolean)
+        .join(" · ");
+      details.append(badges, name, meta);
+
+      const switchLabel = document.createElement("label");
+      switchLabel.className = "visibility-switch";
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.role = "switch";
+      toggle.checked = desiredVisible;
+      toggle.disabled = lesson.isCurrent && desiredVisible;
+      toggle.setAttribute("aria-label", `${lesson.title} visibility`);
+      if (lesson.isCurrent && desiredVisible) {
+        toggle.title = "The current lesson must stay visible. Make another lesson current before hiding it.";
+      }
+      const toggleText = document.createElement("span");
+      toggleText.className = "visibility-switch-text";
+      toggleText.textContent = desiredVisible ? "On" : "Off";
+      toggle.addEventListener("change", () => {
+        visibilityState.draft.set(lesson.id, toggle.checked);
+        invalidatePublishPreflight();
+        setWorkflowNotice("visibilityNotice");
+        renderVisibility();
+      });
+      switchLabel.append(toggle, toggleText);
+
+      card.append(details, switchLabel);
+      section.append(card);
+    }
+    container.append(section);
+  }
+
+  count.textContent = `${shown} shown · ${visibleAfterSaveCount()} of ${snapshot.totals.lessons} visible after save`;
+  if (!shown) {
+    const empty = document.createElement("div");
+    empty.className = "preflight-empty";
+    empty.textContent = "No lessons match this search.";
+    container.append(empty);
+  }
+}
+
+function renderVisibilityPending() {
+  const summary = document.querySelector("#pendingVisibilitySummary");
+  const list = document.querySelector("#pendingVisibilityList");
+  const saveButton = document.querySelector("#saveVisibilityButton");
+  const discardButton = document.querySelector("#discardVisibilityButton");
+  const refreshButton = document.querySelector("#refreshVisibilityButton");
+  const preflightButton = document.querySelector("#runPublishPreflightButton");
+  if (!summary || !list) return;
+
+  const changes = visibilityPendingChanges();
+  list.innerHTML = "";
+  summary.classList.toggle("has-changes", changes.length > 0);
+  summary.textContent = changes.length
+    ? `${changes.length} pending change${changes.length === 1 ? "" : "s"}. After save: ${visibleAfterSaveCount()} lessons visible.`
+    : `No pending changes. ${visibleAfterSaveCount()} lessons are visible in the saved source.`;
+
+  for (const change of changes) {
+    const row = document.createElement("div");
+    row.className = "pending-change-row";
+    const action = document.createElement("strong");
+    action.textContent = `${change.visible ? "Show" : "Hide"} ${change.lesson.key}`;
+    const title = document.createElement("span");
+    title.textContent = change.lesson.title;
+    row.append(action, title);
+    list.append(row);
+  }
+
+  if (saveButton) saveButton.disabled = !changes.length;
+  if (discardButton) discardButton.disabled = !changes.length;
+  if (refreshButton) {
+    refreshButton.disabled = changes.length > 0;
+    refreshButton.title = changes.length ? "Save or discard the pending draft before reloading." : "Reload course-map.json";
+  }
+  if (preflightButton) {
+    preflightButton.disabled = changes.length > 0 || !visibilityState.snapshot;
+    preflightButton.title = changes.length ? "Save or discard the pending visibility draft before preflight." : "Rebuild, validate, fetch origin/main, and review scope";
+  }
+}
+
+function renderVisibility() {
+  renderVisibilityGroups();
+  renderVisibilityPending();
+}
+
+async function loadCourseVisibility() {
+  const snapshot = await getJson("/api/course/visibility");
+  setVisibilitySnapshot(snapshot);
+  return snapshot;
+}
+
+function appendPreflightPath(container, item, included) {
+  const row = document.createElement("div");
+  row.className = `preflight-path${included ? " included" : ""}`;
+  const status = document.createElement("span");
+  status.textContent = item.displayStatus;
+  const path = document.createElement("span");
+  path.textContent = item.path;
+  row.append(status, path);
+  container.append(row);
+}
+
+function renderPublishPreflight() {
+  const container = document.querySelector("#publishPreflight");
+  const publishButton = document.querySelector("#requestCoursePublishButton");
+  const commitInput = document.querySelector("#publishCommitMessage");
+  if (!container || !publishButton || !commitInput) return;
+  const pending = visibilityPendingChanges();
+  const preflight = visibilityState.preflight;
+  const commitMessage = commitInput.value.trim();
+  publishButton.disabled = !preflight?.canPublish || pending.length > 0 || commitMessage.length < 5 || commitMessage.length > 120 || /[\r\n]/.test(commitMessage);
+  container.innerHTML = "";
+
+  if (!preflight) {
+    const empty = document.createElement("div");
+    empty.className = "preflight-empty";
+    empty.textContent = pending.length
+      ? "Save or discard the pending lesson-visibility draft before running preflight."
+      : "Preflight has not run. Review the repository state before publishing.";
+    container.append(empty);
+    return;
+  }
+
+  const summary = document.createElement("div");
+  summary.className = "preflight-summary";
+  [
+    ["Repository", preflight.repository.path],
+    ["Branch", preflight.repository.branch || "Detached"],
+    ["Upstream", preflight.repository.upstream || "Unavailable"],
+    ["Synchronization", preflight.repository.ahead === 0 && preflight.repository.behind === 0
+      ? "Matches origin/main"
+      : `${preflight.repository.ahead ?? "?"} ahead / ${preflight.repository.behind ?? "?"} behind`]
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    const name = document.createElement("span");
+    name.textContent = label;
+    const detail = document.createElement("strong");
+    detail.textContent = value;
+    item.append(name, detail);
+    summary.append(item);
+  });
+  container.append(summary);
+
+  const columns = document.createElement("div");
+  columns.className = "preflight-columns";
+  const checksColumn = document.createElement("section");
+  const checksTitle = document.createElement("h3");
+  checksTitle.className = "preflight-section-title";
+  checksTitle.textContent = "Safety and validation";
+  const checks = document.createElement("div");
+  checks.className = "preflight-checks";
+  for (const check of preflight.checks) {
+    const row = document.createElement("div");
+    row.className = "preflight-check";
+    row.dataset.state = check.state;
+    const title = document.createElement("strong");
+    title.textContent = `${check.state === "passed" ? "Passed" : check.state === "blocked" ? "Blocked" : "Info"}: ${check.title}`;
+    const detail = document.createElement("span");
+    detail.textContent = check.detail;
+    row.append(title, detail);
+    checks.append(row);
+  }
+  checksColumn.append(checksTitle, checks);
+
+  const pathsColumn = document.createElement("section");
+  const includedTitle = document.createElement("h3");
+  includedTitle.className = "preflight-section-title";
+  includedTitle.textContent = `Included after confirmation (${preflight.includedChanges.length})`;
+  const included = document.createElement("div");
+  included.className = "preflight-paths";
+  if (preflight.includedChanges.length) {
+    preflight.includedChanges.forEach((item) => appendPreflightPath(included, item, true));
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "preflight-empty";
+    empty.textContent = "Nothing to publish.";
+    included.append(empty);
+  }
+  pathsColumn.append(includedTitle, included);
+
+  if (preflight.excludedChanges.length) {
+    const excludedTitle = document.createElement("h3");
+    excludedTitle.className = "preflight-section-title";
+    excludedTitle.textContent = `Excluded and untouched (${preflight.excludedChanges.length})`;
+    excludedTitle.style.marginTop = "1rem";
+    const excluded = document.createElement("div");
+    excluded.className = "preflight-paths";
+    preflight.excludedChanges.forEach((item) => appendPreflightPath(excluded, item, false));
+    pathsColumn.append(excludedTitle, excluded);
+  }
+
+  columns.append(checksColumn, pathsColumn);
+  container.append(columns);
+  setWorkflowNotice(
+    "publishNotice",
+    preflight.canPublish
+      ? "Preflight passed. Review the included paths and commit message, then use Review and Publish for the final confirmation."
+      : preflight.blockers.length
+        ? `${preflight.blockers.length} publishing blocker${preflight.blockers.length === 1 ? "" : "s"} must be resolved. No files were staged, committed, or pushed.`
+        : "Preflight found no reviewed changes to publish.",
+    preflight.canPublish ? "success" : preflight.blockers.length ? "error" : "warning"
+  );
 }
 
 function populateSelect(select, values, allLabel) {
@@ -322,7 +655,7 @@ function renderCurrentPrep(dashboard) {
   const title = document.querySelector("#currentLessonTitle");
   const meta = document.querySelector("#currentLessonMeta");
   if (title) title.textContent = selected.title;
-  if (meta) meta.textContent = `${selected.key} · ${selected.status} · ${selected.materialCount} public materials`;
+  if (meta) meta.textContent = `${selected.key} · ${selected.status} · ${selected.isVisible ? "Visible on student site" : "Hidden from student site"} · ${selected.materialCount} public materials`;
   const saved = getPrepState(selected.id);
   const status = document.querySelector("#prepStatus");
   const notes = document.querySelector("#prepNotes");
@@ -522,7 +855,7 @@ function renderModuleDashboard(dashboard) {
       button.type = "button";
       button.dataset.lessonId = lesson.id;
       button.className = lesson.id === instructorState.currentLessonId ? "selected" : "";
-      button.innerHTML = `<strong>${lesson.title}</strong><span>${lesson.status}</span>`;
+      button.innerHTML = `<strong>${lesson.title}</strong><span>${lesson.status} · ${lesson.isVisible ? "Visible" : "Hidden"}</span>`;
       section.append(button);
     }
     container.append(section);
@@ -597,6 +930,321 @@ async function loadInstructorDashboard() {
   summary.textContent = "Loading instructor dashboard...";
   const dashboard = await getJson("/api/instructor/dashboard");
   renderInstructorDashboard(dashboard);
+}
+
+function formatLocalUpdate(value) {
+  const updated = new Date(value || "");
+  if (Number.isNaN(updated.getTime())) return "";
+  return ` Saved ${updated.toLocaleDateString(undefined, { month: "short", day: "numeric" })} at ${updated.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`;
+}
+
+function localizeTeachingStep(lesson, step) {
+  const saved = getPrepState(lesson.id);
+  if (step.id === "prep-notes") {
+    const status = saved.status || "not-started";
+    const statusMap = {
+      ready: ["Ready", "ready"],
+      drafting: ["In progress", "attention"],
+      "needs-canvas": ["Needs Canvas", "attention"],
+      "not-started": ["Not started", "neutral"]
+    };
+    const [label, state] = statusMap[status] || [labelFor(status), "neutral"];
+    return {
+      ...step,
+      status: label,
+      state,
+      detail: `${saved.notes?.trim() ? "Private prep notes are saved." : "No private prep notes are saved yet."}${formatLocalUpdate(saved.updatedAt)}`
+    };
+  }
+
+  if (step.id === "after-class") {
+    const hasHandoff = Boolean(saved.handoff?.trim());
+    return {
+      ...step,
+      status: hasHandoff ? "Saved" : "After class",
+      state: hasHandoff ? "ready" : "neutral",
+      detail: hasHandoff
+        ? `Private handoff saved in this lesson's existing prep record.${formatLocalUpdate(saved.handoffUpdatedAt)}`
+        : step.detail
+    };
+  }
+
+  return step;
+}
+
+function localTeachingExceptions(data) {
+  const exceptions = [];
+  for (const lesson of data.lessons || []) {
+    const saved = getPrepState(lesson.id);
+    const status = saved.status || "not-started";
+    const hasExplicitState = Boolean(saved.status);
+    if (status === "ready") continue;
+    if (lesson.sequence !== 0 && !hasExplicitState) continue;
+
+    const needsCanvas = status === "needs-canvas";
+    exceptions.push({
+      id: `${lesson.id}:prep-local`,
+      lessonId: lesson.id,
+      sequence: lesson.sequence,
+      severity: "attention",
+      category: needsCanvas ? "canvas" : "prep",
+      title: needsCanvas
+        ? `${lesson.title} is marked Needs Canvas`
+        : `${lesson.title} prep is ${status === "drafting" ? "still in progress" : "not marked ready"}`,
+      detail: needsCanvas
+        ? "Complete the needed action in Canvas manually, then update the existing lesson prep status."
+        : "Review the private prep notes and mark the lesson Ready for class when preparation is complete.",
+      targetView: "instructor"
+    });
+  }
+  return exceptions;
+}
+
+function teachingExceptions(data) {
+  const rank = { blocker: 0, attention: 1 };
+  return [...(data.exceptions || []), ...localTeachingExceptions(data)].sort((a, b) => {
+    return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9)
+      || (a.sequence ?? 99) - (b.sequence ?? 99)
+      || a.title.localeCompare(b.title);
+  });
+}
+
+function teachingActionButton({ label, lessonId = "", targetView = "", action = "" }) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "weekly-step-action";
+  button.textContent = label;
+  if (lessonId) button.dataset.teachLessonId = lessonId;
+  if (targetView) button.dataset.teachTargetView = targetView;
+  if (action) button.dataset.action = action;
+  return button;
+}
+
+function weeklyStepActionLabel(step) {
+  if (step.id === "student-package") return "Review student files";
+  if (step.id === "instructor-package") return "Review private files";
+  if (step.id === "prep-notes") return "Open prep notes";
+  if (step.id === "canvas") return "Open Canvas Calendar";
+  if (step.id === "activity-grader") return "Open grading";
+  return "Review";
+}
+
+function renderWeeklyStep(lesson, rawStep) {
+  const step = localizeTeachingStep(lesson, rawStep);
+  const item = document.createElement("li");
+  item.className = "weekly-step";
+  item.dataset.state = step.state;
+
+  const number = document.createElement("span");
+  number.className = "weekly-step-number";
+  number.textContent = step.order;
+  number.setAttribute("aria-hidden", "true");
+
+  const details = document.createElement("div");
+  details.className = "weekly-step-details";
+  const titleRow = document.createElement("div");
+  titleRow.className = "weekly-step-title";
+  const title = document.createElement("strong");
+  title.textContent = step.title;
+  const status = document.createElement("span");
+  status.className = `weekly-step-status ${step.state}`;
+  status.textContent = step.status;
+  titleRow.append(title, status);
+  const detail = document.createElement("p");
+  detail.textContent = step.detail;
+  details.append(titleRow, detail);
+
+  const actionArea = document.createElement("div");
+  actionArea.className = "weekly-step-actions";
+  if (step.id === "after-class") {
+    const saved = getPrepState(lesson.id);
+    const label = document.createElement("label");
+    label.htmlFor = `handoff-${lesson.id}`;
+    label.textContent = "Private handoff note";
+    const input = document.createElement("textarea");
+    input.id = `handoff-${lesson.id}`;
+    input.rows = 2;
+    input.maxLength = 600;
+    input.placeholder = "What worked, what needs follow-up, or what to adjust next time?";
+    input.value = saved.handoff || "";
+    const save = teachingActionButton({ label: "Save Handoff" });
+    save.dataset.action = "saveAfterClassHandoff";
+    save.dataset.handoffLessonId = lesson.id;
+    save.setAttribute("aria-label", `Save after-class handoff for ${lesson.title}`);
+    label.append(input);
+    actionArea.append(label, save);
+  } else if (step.action) {
+    actionArea.append(teachingActionButton({
+      label: weeklyStepActionLabel(step),
+      action: step.action
+    }));
+  } else if (step.targetView && !(step.id === "activity-grader" && step.hasActivity === false)) {
+    actionArea.append(teachingActionButton({
+      label: weeklyStepActionLabel(step),
+      lessonId: lesson.id,
+      targetView: step.targetView
+    }));
+  }
+
+  item.append(number, details);
+  if (actionArea.childElementCount) item.append(actionArea);
+  return item;
+}
+
+function renderWeeklyLesson(lesson) {
+  const card = document.createElement("article");
+  card.className = "weekly-lesson-card";
+  if (lesson.isCurrent) card.classList.add("current");
+
+  const header = document.createElement("header");
+  const heading = document.createElement("div");
+  const sequence = document.createElement("span");
+  sequence.className = "weekly-sequence";
+  sequence.textContent = lesson.sequenceLabel;
+  const title = document.createElement("h3");
+  title.textContent = lesson.title;
+  const meta = document.createElement("p");
+  meta.textContent = `${lesson.key} · ${lesson.status || "Unspecified"} · ${lesson.isVisible ? "Visible" : "Hidden"}`;
+  heading.append(sequence, title, meta);
+  const readiness = document.createElement("span");
+  readiness.className = `weekly-readiness ${lesson.readiness.status === "Ready to Teach" ? "ready" : "blocker"}`;
+  readiness.textContent = lesson.readiness.status;
+  header.append(heading, readiness);
+
+  const list = document.createElement("ol");
+  list.className = "weekly-step-list";
+  list.setAttribute("aria-label", `Preparation steps for ${lesson.title}`);
+  for (const step of lesson.steps || []) list.append(renderWeeklyStep(lesson, step));
+  card.append(header, list);
+  return card;
+}
+
+function exceptionActionLabel(item) {
+  if (item.category === "canvas") return "Open Canvas Calendar";
+  if (item.category === "grader") return "Open grading";
+  if (["visibility", "release"].includes(item.category)) return "Review visibility";
+  if (item.category === "prep") return "Open prep notes";
+  return "Review lesson";
+}
+
+function renderExceptionQueue(data) {
+  const queue = document.querySelector("#exceptionQueue");
+  const summary = document.querySelector("#exceptionSummary");
+  const count = document.querySelector("#exceptionCount");
+  if (!queue || !summary || !count) return;
+
+  const exceptions = teachingExceptions(data);
+  const blockers = exceptions.filter((item) => item.severity === "blocker").length;
+  count.textContent = exceptions.length;
+  count.setAttribute("aria-label", `${exceptions.length} exception${exceptions.length === 1 ? "" : "s"}`);
+  summary.textContent = exceptions.length
+    ? `${blockers} blocker${blockers === 1 ? "" : "s"} and ${exceptions.length - blockers} action${exceptions.length - blockers === 1 ? "" : "s"} need review. Routine ready items stay out of this queue.`
+    : "No actionable exceptions in the current three-lesson scope. Continue through each class checklist.";
+  queue.innerHTML = "";
+  queue.setAttribute("aria-busy", "false");
+
+  if (!exceptions.length) {
+    const empty = document.createElement("div");
+    empty.className = "exception-empty";
+    empty.innerHTML = "<strong>Queue clear</strong><span>Required packages and maintained status checks have no current exceptions.</span>";
+    queue.append(empty);
+    return;
+  }
+
+  for (const item of exceptions) {
+    const card = document.createElement("article");
+    card.className = `exception-item ${item.severity}`;
+    const label = document.createElement("span");
+    label.className = "exception-label";
+    label.textContent = item.severity === "blocker" ? "Blocker" : labelFor(item.category);
+    const title = document.createElement("h3");
+    title.textContent = item.title;
+    const detail = document.createElement("p");
+    detail.textContent = item.detail;
+    card.append(label, title, detail);
+    if (item.action || item.targetView) {
+      const action = teachingActionButton({
+        label: exceptionActionLabel(item),
+        lessonId: item.lessonId,
+        targetView: item.targetView,
+        action: item.action
+      });
+      action.setAttribute("aria-label", `${exceptionActionLabel(item)}: ${item.title}`);
+      card.append(action);
+    }
+    queue.append(card);
+  }
+}
+
+function renderTeachingWeek(data) {
+  teachingState.data = data;
+  teachingState.error = "";
+  const lessons = document.querySelector("#teachWeekLessons");
+  const scope = document.querySelector("#teachWeekScope");
+  const count = document.querySelector("#teachWeekLessonCount");
+  if (!lessons || !scope || !count) return;
+
+  scope.textContent = `${data.scope} Package and status checks are derived from the current public and private repositories.`;
+  count.textContent = `${data.lessons?.length || 0} class${data.lessons?.length === 1 ? "" : "es"}`;
+  lessons.innerHTML = "";
+  lessons.setAttribute("aria-busy", "false");
+  setWorkflowNotice("teachWeekNotice");
+
+  if (!data.lessons?.length) {
+    const empty = document.createElement("article");
+    empty.className = "weekly-empty";
+    empty.textContent = "No current or near-term lessons are available in the maintained course map.";
+    lessons.append(empty);
+  } else {
+    for (const lesson of data.lessons) lessons.append(renderWeeklyLesson(lesson));
+  }
+  renderExceptionQueue(data);
+}
+
+function renderTeachingWeekError(error) {
+  teachingState.data = null;
+  teachingState.error = error.message;
+  const lessons = document.querySelector("#teachWeekLessons");
+  const queue = document.querySelector("#exceptionQueue");
+  const count = document.querySelector("#teachWeekLessonCount");
+  const exceptionCount = document.querySelector("#exceptionCount");
+  const scope = document.querySelector("#teachWeekScope");
+  const exceptionSummary = document.querySelector("#exceptionSummary");
+  if (lessons) {
+    lessons.innerHTML = "";
+    lessons.setAttribute("aria-busy", "false");
+    const message = document.createElement("article");
+    message.className = "weekly-error";
+    message.textContent = "The weekly plan could not load. Existing Today, Instructor, Materials, Grading, and publishing workflows remain available.";
+    lessons.append(message);
+  }
+  if (queue) {
+    queue.innerHTML = '<div class="exception-empty"><strong>Queue unavailable</strong><span>Refresh the weekly plan after the server connection is restored.</span></div>';
+    queue.setAttribute("aria-busy", "false");
+  }
+  if (count) count.textContent = "Unavailable";
+  if (exceptionCount) exceptionCount.textContent = "—";
+  if (scope) scope.textContent = "The maintained weekly data is temporarily unavailable. Use Refresh Weekly Plan to try again.";
+  if (exceptionSummary) exceptionSummary.textContent = "Actionable exceptions are unavailable until the weekly plan reconnects.";
+  setWorkflowNotice("teachWeekNotice", `Teach This Week could not load: ${error.message}`, "error");
+}
+
+async function loadTeachingWeek() {
+  teachingState.loading = true;
+  const lessons = document.querySelector("#teachWeekLessons");
+  const queue = document.querySelector("#exceptionQueue");
+  if (lessons) lessons.setAttribute("aria-busy", "true");
+  if (queue) queue.setAttribute("aria-busy", "true");
+  try {
+    const data = await getJson("/api/teaching/week");
+    renderTeachingWeek(data);
+    return data;
+  } catch (error) {
+    renderTeachingWeekError(error);
+    throw error;
+  } finally {
+    teachingState.loading = false;
+  }
 }
 
 function formatCanvasDate(item) {
@@ -723,17 +1371,43 @@ document.addEventListener("click", async (event) => {
     }
 
     if (action.kind === "refreshInstructor") {
-      await loadInstructorDashboard();
-      writeLog("Instructor dashboard refreshed.");
+      await Promise.all([loadInstructorDashboard(), loadTeachingWeek()]);
+      writeLog("Instructor dashboard and weekly teaching plan refreshed.");
+    }
+
+    if (action.kind === "refreshTeachingWeek") {
+      button.disabled = true;
+      button.textContent = "Refreshing…";
+      setWorkflowNotice("teachWeekNotice", "Refreshing current repository, Canvas snapshot, and grading readiness…", "warning");
+      await loadTeachingWeek();
+      writeLog("Teach This Week refreshed from maintained course and instructor data.");
     }
 
     if (action.kind === "savePrepNotes") {
-      savePrepState(instructorState.currentLessonId, {
+      const lessonId = instructorState.currentLessonId;
+      savePrepState(lessonId, {
+        ...getPrepState(lessonId),
         status: document.querySelector("#prepStatus").value,
         notes: document.querySelector("#prepNotes").value,
         updatedAt: new Date().toISOString()
       });
+      if (teachingState.data) renderTeachingWeek(teachingState.data);
       writeLog("Prep notes saved locally.");
+    }
+
+    if (action.kind === "saveAfterClassHandoff") {
+      const lessonId = button.dataset.handoffLessonId;
+      if (!lessonId) throw new Error("Choose a lesson before saving an after-class handoff");
+      const field = document.querySelector(`#handoff-${lessonId}`);
+      if (!field) throw new Error("The after-class handoff field is unavailable");
+      const saved = getPrepState(lessonId);
+      savePrepState(lessonId, {
+        ...saved,
+        handoff: field.value.trim(),
+        handoffUpdatedAt: new Date().toISOString()
+      });
+      if (teachingState.data) renderTeachingWeek(teachingState.data);
+      writeLog(`After-class handoff saved locally for ${lessonId}.`);
     }
 
     if (action.kind === "setCurrentLesson") {
@@ -746,19 +1420,98 @@ document.addEventListener("click", async (event) => {
       instructorState.selectedLessonId = lessonId;
       renderInstructorDashboard(result.dashboard);
       const regenerationStatus = result.regeneration?.status || "unknown";
-      writeLog(`Current lesson set to ${result.currentLessonTitle}. Index regeneration: ${regenerationStatus}. Publish to GitHub when ready.`);
+      writeLog(`Current lesson set to ${result.currentLessonTitle}. Index regeneration: ${regenerationStatus}. Review Visibility & Publishing when ready.`);
+      await loadCourseVisibility();
+      await loadTeachingWeek();
     }
 
-    if (action.kind === "publishCourseMap") {
+    if (action.kind === "refreshVisibility") {
       button.disabled = true;
-      button.textContent = "Publishing...";
-      const result = await postJson("/api/course/publish", {});
-      if (result.dashboard) {
-        instructorState.dashboard = result.dashboard;
-        renderInstructorDashboard(result.dashboard);
-      }
+      button.textContent = "Reloading…";
+      await loadCourseVisibility();
+      setWorkflowNotice("visibilityNotice", "Reloaded lesson visibility from course-map.json.", "success");
+      writeLog("Lesson visibility reloaded from the public course map.");
+    }
+
+    if (action.kind === "discardVisibility") {
+      const snapshot = visibilityState.snapshot;
+      if (!snapshot) return;
+      visibilityState.draft = new Map(snapshot.lessons.map((lesson) => [lesson.id, lesson.visible]));
+      invalidatePublishPreflight();
+      renderVisibility();
+      setWorkflowNotice("visibilityNotice", "Discarded the local visibility draft. No source files changed.", "success");
+      writeLog("Visibility draft discarded; course-map.json was not changed.");
+    }
+
+    if (action.kind === "saveVisibility") {
+      const changes = visibilityPendingChanges();
+      if (!visibilityState.snapshot || !changes.length) throw new Error("There are no pending visibility changes to save");
+      button.disabled = true;
+      button.textContent = "Saving and rebuilding…";
+      setWorkflowNotice("visibilityNotice", "Saving the reviewed visibility draft and rebuilding the local student preview…", "warning");
+      const result = await postJson("/api/course/visibility", {
+        revision: visibilityState.snapshot.revision,
+        changes: changes.map(({ lesson, visible }) => ({ lessonId: lesson.id, visible }))
+      });
+      setVisibilitySnapshot(result.visibility);
+      setWorkflowNotice("visibilityNotice", result.message, "success");
+      await loadInstructorDashboard();
+      await loadTeachingWeek();
       writeLog(result.message);
-      (result.details || []).forEach((detail) => writeLog(detail));
+      writeLog("GitHub publishing was not run. Use Publishing Preflight when the local preview is ready.");
+    }
+
+    if (action.kind === "runPublishPreflight") {
+      if (visibilityPendingChanges().length) throw new Error("Save or discard pending visibility changes before preflight");
+      button.disabled = true;
+      button.textContent = "Running preflight…";
+      setWorkflowNotice("publishNotice", "Rebuilding, validating, fetching origin/main, and checking the reviewed Git scope…", "warning");
+      visibilityState.preflight = await postJson("/api/course/publish-preflight", {});
+      renderPublishPreflight();
+      writeLog(visibilityState.preflight.canPublish
+        ? `Publishing preflight passed for ${visibilityState.preflight.includedChanges.length} reviewed path(s).`
+        : "Publishing preflight completed without staging, committing, or pushing; review the displayed blockers or clean state.");
+    }
+
+    if (action.kind === "requestCoursePublish") {
+      const preflight = visibilityState.preflight;
+      if (!preflight?.canPublish) throw new Error("Run a passing publishing preflight before confirmation");
+      const dialog = document.querySelector("#publishConfirmationDialog");
+      const summary = document.querySelector("#publishConfirmationSummary");
+      const paths = document.querySelector("#publishConfirmationPaths");
+      summary.textContent = `Mission Control will re-run every safety check, stage only ${preflight.includedChanges.length} reviewed path${preflight.includedChanges.length === 1 ? "" : "s"}, create one commit on main, and push origin/main.`;
+      paths.innerHTML = "";
+      preflight.includedChanges.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "confirmation-path";
+        row.textContent = `${item.displayStatus}: ${item.path}`;
+        paths.append(row);
+      });
+      dialog.showModal();
+    }
+
+    if (action.kind === "cancelCoursePublish") {
+      document.querySelector("#publishConfirmationDialog")?.close();
+    }
+
+    if (action.kind === "confirmCoursePublish") {
+      const preflight = visibilityState.preflight;
+      if (!preflight?.canPublish) throw new Error("The reviewed preflight is no longer available");
+      button.disabled = true;
+      button.textContent = "Rechecking and publishing…";
+      const result = await postJson("/api/course/publish", {
+        confirmed: true,
+        reviewToken: preflight.reviewToken,
+        commitMessage: document.querySelector("#publishCommitMessage").value.trim()
+      });
+      document.querySelector("#publishConfirmationDialog")?.close();
+      visibilityState.preflight = null;
+      if (result.visibility) setVisibilitySnapshot(result.visibility);
+      if (result.dashboard) renderInstructorDashboard(result.dashboard);
+      setWorkflowNotice("publishNotice", result.message, "success");
+      renderPublishPreflight();
+      writeLog(result.message);
+      (result.publishedPaths || []).forEach((path) => writeLog(`Published reviewed path: ${path}`));
     }
 
     if (action.kind === "openInstructorFolder") {
@@ -771,6 +1524,16 @@ document.addEventListener("click", async (event) => {
       writeLog(result.message);
     }
   } catch (error) {
+    if (action.kind === "saveVisibility" || action.kind === "refreshVisibility") {
+      setWorkflowNotice("visibilityNotice", error.message, "error");
+    }
+    if (["runPublishPreflight", "requestCoursePublish", "confirmCoursePublish"].includes(action.kind)) {
+      if (error.data?.preflight) {
+        visibilityState.preflight = error.data.preflight;
+        renderPublishPreflight();
+      }
+      setWorkflowNotice("publishNotice", error.message, "error");
+    }
     writeLog(`Error: ${error.message}. Make sure Mission Control is running at http://localhost:8123/.`);
   } finally {
     if (action.kind === "grading") {
@@ -780,9 +1543,25 @@ document.addEventListener("click", async (event) => {
     if (action.kind === "setCurrentLesson" && instructorState.dashboard) {
       renderInstructorDashboard(instructorState.dashboard);
     }
-    if (action.kind === "publishCourseMap") {
+    if (action.kind === "refreshVisibility") {
+      button.disabled = visibilityPendingChanges().length > 0;
+      button.textContent = "Reload Course Map";
+    }
+    if (action.kind === "saveVisibility") {
+      button.textContent = "Save and Rebuild";
+      renderVisibilityPending();
+    }
+    if (action.kind === "runPublishPreflight") {
+      button.textContent = "Run Publishing Preflight";
+      renderVisibilityPending();
+    }
+    if (action.kind === "confirmCoursePublish") {
       button.disabled = false;
-      button.textContent = "Publish to GitHub";
+      button.textContent = "Commit and Push Main";
+    }
+    if (action.kind === "refreshTeachingWeek") {
+      button.disabled = false;
+      button.textContent = "Refresh Weekly Plan";
     }
   }
 });
@@ -794,6 +1573,30 @@ document.querySelector("#gradingActivity")?.addEventListener("change", (event) =
 
 document.querySelector("#gradeOutputPath")?.addEventListener("input", (event) => {
   event.target.dataset.touched = "true";
+});
+
+document.querySelector("#visibilitySearch")?.addEventListener("input", (event) => {
+  visibilityState.search = event.target.value;
+  renderVisibilityGroups();
+});
+
+document.querySelector("#publishCommitMessage")?.addEventListener("input", () => {
+  renderPublishPreflight();
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (!visibilityPendingChanges().length) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+document.addEventListener("click", (event) => {
+  const control = event.target.closest("button[data-teach-target-view]");
+  if (!control) return;
+  const lessonId = control.dataset.teachLessonId;
+  if (lessonId) instructorState.selectedLessonId = lessonId;
+  if (instructorState.dashboard) renderInstructorDashboard(instructorState.dashboard);
+  setActiveView(control.dataset.teachTargetView);
 });
 
 document.addEventListener("click", (event) => {
@@ -853,6 +1656,12 @@ document.addEventListener("click", async (event) => {
 setupViews();
 setupMaterialFilters();
 
+loadCourseVisibility().catch((error) => {
+  writeLog(`Lesson visibility error: ${error.message}.`);
+  setWorkflowNotice("visibilityNotice", "Lesson visibility could not load from course-map.json.", "error");
+  renderVisibility();
+});
+
 loadMaterials().catch((error) => {
   writeLog(`Materials console error: ${error.message}.`);
   const summary = document.querySelector("#materialsSummary");
@@ -863,6 +1672,10 @@ loadInstructorDashboard().catch((error) => {
   writeLog(`Instructor dashboard error: ${error.message}.`);
   const summary = document.querySelector("#instructorSummary");
   if (summary) summary.textContent = "Instructor dashboard could not load.";
+});
+
+loadTeachingWeek().catch((error) => {
+  writeLog(`Teach This Week error: ${error.message}.`);
 });
 
 loadCanvasWeekAhead().catch((error) => {

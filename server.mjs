@@ -1,22 +1,36 @@
 import { createServer } from "node:http";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, normalize, relative, sep } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { parseGitStatus } from "./core/publishing.mjs";
+import { buildTeachingWeek } from "./core/teaching-week.mjs";
+import {
+  applyVisibilityChanges,
+  buildVisibilitySnapshot,
+  courseMapRevision,
+  lessonIsVisible,
+  sha256,
+  VisibilityUpdateError
+} from "./core/visibility.mjs";
 
-const PORT = 8123;
-const PUBLIC_PORT = 8124;
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 
 const HOME_DIR = process.env.HOME || process.env.USERPROFILE || "/Users/bethanyevittsair2";
+const PORT = Number(process.env.BUS123_MISSION_PORT || 8123);
+const PUBLIC_PORT = Number(process.env.BUS123_PUBLIC_PORT || 8124);
 const BUNDLED_PYTHON = join(HOME_DIR, ".cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3");
+const PUBLIC_REPO = process.env.BUS123_PUBLIC_REPO
+  || join(HOME_DIR, "Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology");
+const INSTRUCTOR_REPO = process.env.BUS123_INSTRUCTOR_REPO
+  || join(HOME_DIR, "Documents/GitHub/BUS123-instructor");
 
 const targets = {
-  publicSite: "http://localhost:8124/",
-  publicRepo: join(HOME_DIR, "Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology"),
-  instructorRepo: join(HOME_DIR, "Documents/GitHub/BUS123-instructor"),
-  instructorGrading: join(HOME_DIR, "Documents/GitHub/BUS123-instructor/grading"),
-  courseMap: join(HOME_DIR, "Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology/course-map.json"),
+  publicSite: `http://localhost:${PUBLIC_PORT}/`,
+  publicRepo: PUBLIC_REPO,
+  instructorRepo: INSTRUCTOR_REPO,
+  instructorGrading: join(INSTRUCTOR_REPO, "grading"),
+  courseMap: join(PUBLIC_REPO, "course-map.json"),
   desktop: join(HOME_DIR, "Desktop"),
   brandTemplate: "https://drive.google.com/file/d/1xty2pm0baSDRKKT1ncCyrVWJrD29cDfm",
   projectInstructions: "https://docs.google.com/document/d/1OxAbv_Hpn7N8xT3Aw7YylfGPatpvmKLI4SZGk4_0m38/edit?usp=drivesdk"
@@ -34,7 +48,7 @@ const buildTools = {
   "open-teaching-bundle": { script: "open-teaching-bundle.mjs", openTargets: true }
 };
 
-const publishPaths = ["course-map.json", "index.html"];
+const publishPaths = ["course-map.json", "index.html", "scripts/build-index.mjs"];
 const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip", ".docx", ".md"]);
 const skippedDirs = new Set([".git", "assets", "tmp", "node_modules", "__MACOSX"]);
 
@@ -89,8 +103,9 @@ function openTarget(target) {
 }
 
 function runCommand(command, args, options = {}) {
+  const { preserveWhitespace = false, ...execOptions } = options;
   return new Promise((resolve, reject) => {
-    execFile(command, args, { maxBuffer: 1024 * 1024, ...options }, (error, stdout, stderr) => {
+    execFile(command, args, { maxBuffer: 1024 * 1024, ...execOptions }, (error, stdout, stderr) => {
       if (error) {
         error.stdout = stdout;
         error.stderr = stderr;
@@ -98,13 +113,16 @@ function runCommand(command, args, options = {}) {
         return;
       }
 
-      resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
+      resolve({
+        stdout: preserveWhitespace ? stdout : stdout.trim(),
+        stderr: preserveWhitespace ? stderr : stderr.trim()
+      });
     });
   });
 }
 
-function runPublicGit(args) {
-  return runCommand("git", args, { cwd: targets.publicRepo });
+function runPublicGit(args, options = {}) {
+  return runCommand("git", args, { cwd: targets.publicRepo, ...options });
 }
 
 function commandErrorMessage(error) {
@@ -118,22 +136,24 @@ function isPathInside(candidate, root) {
   return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}${sep}`);
 }
 
-function parseGitStatus(text) {
-  return text
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter(Boolean)
-    .map((line) => {
-      const status = line.slice(0, 2);
-      const path = line.slice(2).trim().replace(/^.* -> /, "");
-      return {
-        line,
-        path,
-        staged: status[0] !== " " && status[0] !== "?",
-        deleted: status.includes("D"),
-        publishPath: publishPaths.includes(path)
-      };
-    });
+async function readOptionalFile(path) {
+  try {
+    return await readFile(path);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function writeTextAtomically(path, text) {
+  const temporaryPath = `${path}.mission-control-${process.pid}.tmp`;
+  try {
+    await writeFile(temporaryPath, text);
+    await rename(temporaryPath, path);
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => {});
+    throw error;
+  }
 }
 
 function classifyMaterial(filePath) {
@@ -226,11 +246,20 @@ async function getMaterials() {
 }
 
 async function readCourseMap() {
-  return JSON.parse(await readFile(targets.courseMap, "utf8"));
+  return (await readCourseMapSource()).courseMap;
+}
+
+async function readCourseMapSource() {
+  const sourceText = await readFile(targets.courseMap, "utf8");
+  return {
+    sourceText,
+    revision: courseMapRevision(sourceText),
+    courseMap: JSON.parse(sourceText)
+  };
 }
 
 async function writeCourseMap(courseMap) {
-  await writeFile(targets.courseMap, `${JSON.stringify(courseMap, null, 2)}\n`);
+  await writeTextAtomically(targets.courseMap, `${JSON.stringify(courseMap, null, 2)}\n`);
 }
 
 function lessonKey(lesson) {
@@ -308,7 +337,9 @@ async function getInstructorDashboard() {
       key: lessonKey(lesson),
       title: lesson.title || lesson.id,
       status: lesson.status || "Unspecified",
+      displayOrder: lesson.displayOrder,
       isCurrent: lesson.id === currentLessonId,
+      isVisible: lessonIsVisible(lesson),
       isReleased: isReleased(lesson.status),
       caseStudy: lesson.caseStudy,
       skillFocus: lesson.skillFocus ?? [],
@@ -341,7 +372,12 @@ async function getInstructorDashboard() {
   }
 
   const moduleList = [...modules.values()].sort((a, b) => a.id.localeCompare(b.id));
-  const lessons = moduleList.flatMap((module) => module.lessons);
+  const dashboardLessonsById = new Map(
+    moduleList.flatMap((module) => module.lessons).map((lesson) => [lesson.id, lesson])
+  );
+  const lessons = (courseMap.lessons ?? [])
+    .map((lesson) => dashboardLessonsById.get(lesson.id))
+    .filter(Boolean);
   return {
     course: courseMap.course,
     currentLesson: lessons.find((lesson) => lesson.isCurrent) || null,
@@ -352,6 +388,7 @@ async function getInstructorDashboard() {
       needsReview: lessons.filter((lesson) => lesson.missingPublic.length || !lesson.instructorFolderExists).length,
       privateArtifacts: materials.filter((item) => item.visibility === "private").length
     },
+    lessons,
     modules: moduleList
   };
 }
@@ -377,10 +414,89 @@ async function handleInstructorDashboard(response) {
   sendJson(response, 200, await getInstructorDashboard());
 }
 
+async function getCourseVisibilitySnapshot() {
+  const source = await readCourseMapSource();
+  return buildVisibilitySnapshot(source.courseMap, { revision: source.revision });
+}
+
+async function handleCourseVisibility(response) {
+  sendJson(response, 200, await getCourseVisibilitySnapshot());
+}
+
+async function handleCourseVisibilityUpdate(request, response) {
+  const body = await readRequestJson(request);
+  const source = await readCourseMapSource();
+
+  if (!body.revision || body.revision !== source.revision) {
+    sendJson(response, 409, {
+      error: "course-map.json changed after this visibility view loaded. Reload the lesson list before saving so newer work is not overwritten.",
+      code: "stale-course-map"
+    });
+    return;
+  }
+
+  let update;
+  try {
+    update = applyVisibilityChanges(source.courseMap, body.changes);
+  } catch (error) {
+    const statusCode = error instanceof VisibilityUpdateError && error.code === "stale-lesson" ? 409 : 400;
+    sendJson(response, statusCode, {
+      error: error.message,
+      code: error.code || "invalid-visibility-change"
+    });
+    return;
+  }
+
+  const publicIndexPath = join(targets.publicRepo, "index.html");
+  const originalIndex = await readOptionalFile(publicIndexPath);
+  let courseMapWritten = false;
+
+  try {
+    await writeCourseMap(update.courseMap);
+    courseMapWritten = true;
+    const regeneration = await runBuildToolScript(buildTools["regenerate-index"].script);
+    if (regeneration.status === "error") {
+      throw new Error(regeneration.summary || "Public index regeneration failed.");
+    }
+
+    sendJson(response, 200, {
+      status: "saved",
+      message: `Saved ${update.applied.length} lesson visibility change${update.applied.length === 1 ? "" : "s"} and rebuilt the student homepage locally. Nothing was committed or pushed.`,
+      applied: update.applied,
+      regeneration,
+      visibility: await getCourseVisibilitySnapshot()
+    });
+  } catch (error) {
+    const rollbackErrors = [];
+    if (courseMapWritten) {
+      try {
+        await writeTextAtomically(targets.courseMap, source.sourceText);
+      } catch (rollbackError) {
+        rollbackErrors.push(`course-map rollback failed: ${rollbackError.message}`);
+      }
+    }
+    if (originalIndex) {
+      try {
+        await writeFile(publicIndexPath, originalIndex);
+      } catch (rollbackError) {
+        rollbackErrors.push(`index rollback failed: ${rollbackError.message}`);
+      }
+    }
+
+    sendJson(response, 500, {
+      error: rollbackErrors.length
+        ? `Save and rebuild failed, and rollback needs attention. ${error.message} ${rollbackErrors.join(" ")}`
+        : `Save and rebuild failed, so the course map and generated homepage were restored. ${error.message}`,
+      code: rollbackErrors.length ? "rollback-incomplete" : "save-rolled-back"
+    });
+  }
+}
+
 async function handleCurrentLessonUpdate(request, response) {
   const body = await readRequestJson(request);
   const nextLessonId = String(body.lessonId || "").trim();
-  const courseMap = await readCourseMap();
+  const source = await readCourseMapSource();
+  const courseMap = source.courseMap;
   const lessons = courseMap.lessons ?? [];
   const nextLesson = lessons.find((lesson) => lesson.id === nextLessonId);
 
@@ -389,12 +505,46 @@ async function handleCurrentLessonUpdate(request, response) {
     return;
   }
 
+  if (!lessonIsVisible(nextLesson)) {
+    sendJson(response, 409, {
+      error: "A hidden lesson cannot become the current student lesson. Turn its visibility on and save first."
+    });
+    return;
+  }
+
   const previousLessonId = courseMap.course?.currentLessonId || "";
   if (!courseMap.course) courseMap.course = {};
   courseMap.course.currentLessonId = nextLesson.id;
-  await writeCourseMap(courseMap);
+  const publicIndexPath = join(targets.publicRepo, "index.html");
+  const originalIndex = await readOptionalFile(publicIndexPath);
+  let regeneration;
 
-  const regeneration = await runBuildToolScript(buildTools["regenerate-index"].script);
+  try {
+    await writeCourseMap(courseMap);
+    regeneration = await runBuildToolScript(buildTools["regenerate-index"].script);
+    if (regeneration.status === "error") throw new Error(regeneration.summary);
+  } catch (error) {
+    const rollbackErrors = [];
+    try {
+      await writeTextAtomically(targets.courseMap, source.sourceText);
+    } catch (rollbackError) {
+      rollbackErrors.push(`course-map rollback failed: ${rollbackError.message}`);
+    }
+    if (originalIndex) {
+      try {
+        await writeFile(publicIndexPath, originalIndex);
+      } catch (rollbackError) {
+        rollbackErrors.push(`index rollback failed: ${rollbackError.message}`);
+      }
+    }
+    sendJson(response, 500, {
+      error: rollbackErrors.length
+        ? `Current-lesson rebuild failed and rollback needs attention. ${error.message} ${rollbackErrors.join(" ")}`
+        : `Current lesson was not changed because the public rebuild failed. ${error.message}`
+    });
+    return;
+  }
+
   const dashboard = await getInstructorDashboard();
 
   sendJson(response, 200, {
@@ -406,88 +556,280 @@ async function handleCurrentLessonUpdate(request, response) {
   });
 }
 
-async function handleCoursePublish(response) {
-  const courseMap = await readCourseMap();
-  const currentLesson = (courseMap.lessons ?? [])
-    .find((lesson) => lesson.id === courseMap.course?.currentLessonId);
-  const lessonLabel = currentLesson
-    ? `${currentLesson.title || currentLesson.id} (${currentLesson.id})`
-    : courseMap.course?.currentLessonId || "current lesson";
+async function publicPathFingerprint(changes) {
+  const fingerprints = [];
+  for (const change of changes) {
+    const filePath = join(targets.publicRepo, change.path);
+    let digest = "missing";
+    try {
+      const file = await stat(filePath);
+      digest = file.isFile() ? sha256(await readFile(filePath)) : "directory";
+    } catch (error) {
+      if (error.code !== "ENOENT") digest = `unreadable:${error.code || error.message}`;
+    }
+    fingerprints.push({ status: change.status, path: change.path, digest });
+  }
+  return fingerprints;
+}
+
+async function collectCoursePublishPreflight({ refreshRemote = true, rebuild = true } = {}) {
+  const checks = [];
+  const blockers = [];
+  const addCheck = (title, state, detail) => {
+    const check = { title, state, detail };
+    checks.push(check);
+    if (state === "blocked") blockers.push(check);
+  };
+
+  let regeneration = null;
+  if (rebuild) {
+    try {
+      regeneration = await runBuildToolScript(buildTools["regenerate-index"].script);
+      addCheck(
+        "Rebuild and validation",
+        regeneration.status === "error" ? "blocked" : "passed",
+        regeneration.status === "warning"
+          ? `${regeneration.summary} Non-blocking warnings remain visible in Tools.`
+          : regeneration.summary
+      );
+    } catch (error) {
+      addCheck("Rebuild and validation", "blocked", commandErrorMessage(error));
+    }
+  }
+
+  if (refreshRemote) {
+    try {
+      await runPublicGit(["fetch", "origin", "main"]);
+      addCheck("Remote refresh", "passed", "Fetched origin/main before reviewing synchronization.");
+    } catch (error) {
+      addCheck("Remote refresh", "blocked", `Could not fetch origin/main: ${commandErrorMessage(error)}`);
+    }
+  }
+
+  let status = [];
+  let branch = "";
+  let upstream = "";
+  let headSHA = "";
+  let originSHA = "";
+  let remoteURL = "";
+  let ahead = null;
+  let behind = null;
 
   try {
-    const status = parseGitStatus((await runPublicGit(["status", "--porcelain=v1"])).stdout);
-    const expectedChanges = status.filter((item) => item.publishPath);
-    const unrelatedStaged = status.filter((item) => !item.publishPath && item.staged);
-    const unrelatedUnstaged = status.filter((item) => !item.publishPath && !item.staged);
+    status = parseGitStatus(
+      (await runPublicGit(["status", "--porcelain=v1"], { preserveWhitespace: true })).stdout,
+      publishPaths
+    );
+    branch = (await runPublicGit(["branch", "--show-current"])).stdout;
+    headSHA = (await runPublicGit(["rev-parse", "--short", "HEAD"])).stdout;
+    remoteURL = (await runPublicGit(["remote", "get-url", "origin"])).stdout;
+    try {
+      upstream = (await runPublicGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])).stdout;
+    } catch {}
+    try {
+      originSHA = (await runPublicGit(["rev-parse", "--short", "origin/main"])).stdout;
+      const counts = (await runPublicGit(["rev-list", "--left-right", "--count", "HEAD...origin/main"])).stdout
+        .split(/\s+/)
+        .map(Number);
+      [ahead, behind] = counts;
+    } catch {}
+  } catch (error) {
+    addCheck("Git repository", "blocked", commandErrorMessage(error));
+  }
 
-    if (unrelatedStaged.length) {
+  addCheck(
+    "Branch",
+    branch === "main" ? "passed" : "blocked",
+    branch === "main" ? "Publishing target is main." : branch ? `Current branch is ${branch}; switch to main before publishing.` : "The checkout is in detached HEAD state."
+  );
+  addCheck(
+    "Upstream",
+    upstream === "origin/main" ? "passed" : "blocked",
+    upstream === "origin/main" ? "main tracks origin/main." : `Expected origin/main, found ${upstream || "no upstream"}.`
+  );
+  addCheck(
+    "Synchronization",
+    ahead === 0 && behind === 0 ? "passed" : "blocked",
+    ahead === null || behind === null
+      ? "Could not compare HEAD with origin/main."
+      : ahead === 0 && behind === 0
+        ? "Local main matches the fetched origin/main before publication."
+        : `Local main is ${ahead} commit${ahead === 1 ? "" : "s"} ahead and ${behind} commit${behind === 1 ? "" : "s"} behind origin/main.`
+  );
+
+  const requiredPaths = ["course-map.json", "index.html", "scripts/build-index.mjs"];
+  const missingRequired = [];
+  for (const path of requiredPaths) {
+    try {
+      const file = await stat(join(targets.publicRepo, path));
+      if (!file.isFile()) missingRequired.push(path);
+    } catch {
+      missingRequired.push(path);
+    }
+  }
+  addCheck(
+    "Required public sources",
+    missingRequired.length ? "blocked" : "passed",
+    missingRequired.length ? `Missing: ${missingRequired.join(", ")}.` : "Course map, generated homepage, and homepage builder are present."
+  );
+
+  const stagedChanges = status.filter((item) => item.staged);
+  addCheck(
+    "Existing staged work",
+    stagedChanges.length ? "blocked" : "passed",
+    stagedChanges.length
+      ? `Pre-staged paths must be reviewed outside Mission Control first: ${stagedChanges.map((item) => item.path).join(", ")}.`
+      : "The Git index is clean; Mission Control has not inherited someone else's staged scope."
+  );
+
+  const includedChanges = status.filter((item) => item.publishPath);
+  const excludedChanges = status.filter((item) => !item.publishPath);
+  const deletedIncluded = includedChanges.filter((item) => item.deleted);
+  addCheck(
+    "Reviewed publication scope",
+    deletedIncluded.length ? "blocked" : includedChanges.length ? "passed" : "info",
+    deletedIncluded.length
+      ? `Mission Control will not publish deleted required paths: ${deletedIncluded.map((item) => item.path).join(", ")}.`
+      : includedChanges.length
+        ? `${includedChanges.length} allowed path${includedChanges.length === 1 ? "" : "s"} will be staged only after confirmation.`
+        : "No BUS123 course-map or generated-homepage changes are waiting to publish."
+  );
+  addCheck(
+    "Excluded local work",
+    "info",
+    excludedChanges.length
+      ? `${excludedChanges.length} unrelated path${excludedChanges.length === 1 ? " is" : "s are"} excluded and will remain untouched.`
+      : "No unrelated public-repository changes were detected."
+  );
+
+  const workspaceFingerprint = await publicPathFingerprint(status);
+  const reviewToken = sha256(JSON.stringify({
+    branch,
+    upstream,
+    headSHA,
+    originSHA,
+    workspaceFingerprint
+  }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    canPublish: blockers.length === 0 && includedChanges.length > 0,
+    reviewToken,
+    repository: {
+      path: targets.publicRepo,
+      branch,
+      upstream,
+      headSHA,
+      originSHA,
+      remoteURL,
+      ahead,
+      behind
+    },
+    checks,
+    blockers,
+    includedChanges: includedChanges.map(({ path, displayStatus, status: code }) => ({ path, displayStatus, code })),
+    excludedChanges: excludedChanges.map(({ path, displayStatus, status: code, staged }) => ({ path, displayStatus, code, staged })),
+    regeneration
+  };
+}
+
+async function handleCoursePublishPreflight(response) {
+  sendJson(response, 200, await collectCoursePublishPreflight({ refreshRemote: true, rebuild: true }));
+}
+
+function validCommitMessage(value) {
+  return value.length >= 5 && value.length <= 120 && !/[\r\n]/.test(value);
+}
+
+async function handleCoursePublish(request, response) {
+  const body = await readRequestJson(request);
+  const reviewToken = String(body.reviewToken || "");
+  const commitMessage = String(body.commitMessage || "").trim();
+
+  if (body.confirmed !== true) {
+    sendJson(response, 400, { error: "Publishing requires an explicit confirmation from the reviewed preflight screen." });
+    return;
+  }
+  if (!reviewToken) {
+    sendJson(response, 400, { error: "Run publishing preflight before confirming publication." });
+    return;
+  }
+  if (!validCommitMessage(commitMessage)) {
+    sendJson(response, 400, { error: "Enter a one-line commit message between 5 and 120 characters." });
+    return;
+  }
+
+  const preflight = await collectCoursePublishPreflight({ refreshRemote: true, rebuild: true });
+  if (!preflight.canPublish) {
+    sendJson(response, 409, {
+      error: "Publishing safety checks no longer pass. Review the refreshed preflight before trying again.",
+      preflight
+    });
+    return;
+  }
+  if (preflight.reviewToken !== reviewToken) {
+    sendJson(response, 409, {
+      error: "The reviewed files or repository state changed after preflight. Review the refreshed scope and confirm again.",
+      preflight
+    });
+    return;
+  }
+
+  const reviewedPaths = preflight.includedChanges.map((item) => item.path).sort();
+  let commit = "";
+  try {
+    await runPublicGit(["add", "--", ...reviewedPaths]);
+    const stagedPaths = (await runPublicGit(["diff", "--cached", "--name-only"])).stdout
+      .split("\n")
+      .map((path) => path.trim())
+      .filter(Boolean)
+      .sort();
+    if (JSON.stringify(stagedPaths) !== JSON.stringify(reviewedPaths)) {
+      await runPublicGit(["restore", "--staged", "--", ...reviewedPaths]).catch(() => {});
       sendJson(response, 409, {
-        error: `Unrelated staged changes exist in the public repo: ${unrelatedStaged.map((item) => item.path).join(", ")}. Unstage or commit them before publishing from Mission Control.`
+        error: `Staged paths did not exactly match the reviewed scope. Expected ${reviewedPaths.join(", ") || "none"}; found ${stagedPaths.join(", ") || "none"}. No commit was created.`
       });
       return;
     }
 
-    if (!expectedChanges.length) {
-      sendJson(response, 200, {
-        status: "clean",
-        message: "No current-lesson changes to publish.",
-        details: unrelatedUnstaged.length
-          ? [`Left unrelated unstaged public-repo changes alone: ${unrelatedUnstaged.map((item) => item.path).join(", ")}`]
-          : []
-      });
-      return;
-    }
-
-    if (expectedChanges.some((item) => item.deleted)) {
-      sendJson(response, 409, {
-        error: "Mission Control will not publish deleted course-map or index files. Restore those files before publishing."
-      });
-      return;
-    }
-
-    const branch = (await runPublicGit(["branch", "--show-current"])).stdout;
-    if (!branch) {
-      sendJson(response, 409, { error: "The public repo is in a detached HEAD state. Check out a branch before publishing." });
-      return;
-    }
-
-    await runPublicGit(["add", "--", ...publishPaths]);
-    await runPublicGit(["commit", "-m", `Update BUS123 current lesson to ${currentLesson?.id || "current lesson"}`, "--", ...publishPaths]);
-    const commit = (await runPublicGit(["rev-parse", "--short", "HEAD"])).stdout;
-    await runPublicGit(["push", "origin", branch]);
-    const dashboard = await getInstructorDashboard();
+    await runPublicGit(["commit", "-m", commitMessage, "--", ...reviewedPaths]);
+    commit = (await runPublicGit(["rev-parse", "--short", "HEAD"])).stdout;
+    await runPublicGit(["push", "origin", "main"]);
 
     sendJson(response, 200, {
       status: "published",
-      message: `Published ${lessonLabel} to GitHub.`,
-      branch,
+      message: `Commit ${commit} was pushed to origin/main. GitHub Pages deployment is separate and may still be running.`,
+      branch: "main",
       commit,
-      dashboard,
-      details: [
-        `Commit ${commit} pushed to origin/${branch}.`,
-        ...(unrelatedUnstaged.length
-          ? [`Left unrelated unstaged public-repo changes alone: ${unrelatedUnstaged.map((item) => item.path).join(", ")}`]
-          : [])
-      ]
+      publishedPaths: reviewedPaths,
+      dashboard: await getInstructorDashboard(),
+      visibility: await getCourseVisibilitySnapshot()
     });
   } catch (error) {
-    sendJson(response, 500, { error: `Publish failed: ${commandErrorMessage(error)}` });
+    if (!commit) {
+      await runPublicGit(["restore", "--staged", "--", ...reviewedPaths]).catch(() => {});
+    }
+    sendJson(response, 500, {
+      error: commit
+        ? `Commit ${commit} was created locally, but the push did not complete: ${commandErrorMessage(error)}. Do not retry blindly; inspect synchronization first.`
+        : `Publish stopped before a commit was created: ${commandErrorMessage(error)}.`
+    });
   }
 }
 
-async function handleCanvasWeekAhead(response) {
+async function getCanvasWeekAhead() {
   const weekAheadPath = join(targets.publicRepo, "assets/canvas-week-ahead.json");
 
   try {
     const text = await readFile(weekAheadPath, "utf8");
     const data = JSON.parse(text);
-    sendJson(response, 200, {
+    return {
       ...data,
       sourcePath: relative(targets.publicRepo, weekAheadPath),
       available: true
-    });
+    };
   } catch (error) {
-    sendJson(response, 200, {
+    return {
       generatedAt: null,
       source: "Canvas Calendar iCal",
       courseId: "58218",
@@ -498,8 +840,12 @@ async function handleCanvasWeekAhead(response) {
       sourcePath: relative(targets.publicRepo, weekAheadPath),
       available: false,
       error: `Could not read public week-ahead data: ${error.message}`
-    });
+    };
   }
+}
+
+async function handleCanvasWeekAhead(response) {
+  sendJson(response, 200, await getCanvasWeekAhead());
 }
 
 async function handleInstructorFolderOpen(request, response) {
@@ -569,6 +915,20 @@ async function getGradingActivities() {
 
 async function handleGradingActivities(response) {
   sendJson(response, 200, { activities: await getGradingActivities() });
+}
+
+async function handleTeachingWeek(response) {
+  const [dashboard, gradingActivities, canvasWeekAhead] = await Promise.all([
+    getInstructorDashboard(),
+    getGradingActivities(),
+    getCanvasWeekAhead()
+  ]);
+  sendJson(response, 200, buildTeachingWeek({
+    dashboard,
+    gradingActivities,
+    canvasWeekAhead,
+    now: new Date()
+  }));
 }
 
 function defaultGradeOutputPath(activityId) {
@@ -866,13 +1226,33 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && request.url === "/api/teaching/week") {
+      await handleTeachingWeek(response);
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/api/course/visibility") {
+      await handleCourseVisibility(response);
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/course/visibility") {
+      await handleCourseVisibilityUpdate(request, response);
+      return;
+    }
+
     if (request.method === "POST" && request.url === "/api/course/current-lesson") {
       await handleCurrentLessonUpdate(request, response);
       return;
     }
 
+    if (request.method === "POST" && request.url === "/api/course/publish-preflight") {
+      await handleCoursePublishPreflight(response);
+      return;
+    }
+
     if (request.method === "POST" && request.url === "/api/course/publish") {
-      await handleCoursePublish(response);
+      await handleCoursePublish(request, response);
       return;
     }
 

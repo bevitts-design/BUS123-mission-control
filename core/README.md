@@ -29,8 +29,10 @@ Platform-specific behavior belongs in Desktop Edition adapters. Browser-specific
 
 `readiness.mjs` is the authoritative readiness policy and evaluator shared by the Desktop validator and Lesson Workspace. Optional Canvas, QTI, and interactive warnings remain visible but do not block **Ready to Teach** when all required Student and Instructor Package components exist.
 
-Run its focused regression test with:
+`teaching-week.mjs` builds the current-plus-next-two lesson projection and focused exception queue from an already-scanned instructor dashboard, private grading activity metadata, and the maintained Canvas snapshot. It is pure and creates no parallel lesson state.
+
+Run the focused shared-core regression tests with:
 
 ```bash
-node core/readiness.test.mjs
+node --test core/*.test.mjs
 ```
