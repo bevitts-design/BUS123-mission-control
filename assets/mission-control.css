@@ -1091,6 +1091,10 @@ th {
   gap: 0.55rem;
 }
 
+.pending-save-notice {
+  font-size: 0.82rem;
+}
+
 #saveVisibilityButton,
 #runPublishPreflightButton {
   border-color: #5d86bd;

@@ -258,15 +258,15 @@
         </div>
         <div class="console-head visibility-console-head">
           <div>
-            <h2>Choose what students can see, then publish only after review</h2>
-            <p>Visibility switches create a local draft first. Save and Rebuild updates the public source and local preview; GitHub publication remains a separate confirmed workflow.</p>
+            <h2>Choose which lesson materials students can open, then publish only after review</h2>
+            <p>On lessons include active material links. Off lessons remain in course order as locked previews with no active links. Switches create a local draft first; GitHub publication remains a separate confirmed workflow.</p>
           </div>
           <button data-action="refreshVisibility" id="refreshVisibilityButton">Reload Course Map</button>
         </div>
 
         <div class="safety-banner" role="note">
           <strong>Two separate safety gates</strong>
-          <span>1. Review pending lesson changes before Save and Rebuild. 2. Run publishing preflight and confirm the exact Git scope before any commit or push.</span>
+          <span>1. Review pending lesson-availability changes before Save and Rebuild. 2. Run publishing preflight and confirm the exact Git scope before any commit or push.</span>
         </div>
         <div id="visibilityNotice" class="workflow-notice" aria-live="polite" hidden></div>
 
@@ -286,15 +286,16 @@
             <div>
               <p class="eyebrow">Local draft</p>
               <h3 id="pendingVisibilityTitle">Review Before Save</h3>
-              <p>Only the listed lessons’ <code>visible</code> value will change.</p>
+              <p>Only the listed lessons’ <code>visible</code> value will change: On makes materials available; Off keeps the card as a locked preview.</p>
             </div>
             <div id="pendingVisibilitySummary" class="pending-summary">No pending changes.</div>
             <div id="pendingVisibilityList" class="pending-list"></div>
+            <div id="visibilitySaveNotice" class="workflow-notice pending-save-notice" role="status" aria-live="polite" hidden></div>
             <div class="pending-actions">
               <button data-action="saveVisibility" id="saveVisibilityButton" disabled>Save and Rebuild</button>
               <button data-action="discardVisibility" id="discardVisibilityButton" disabled>Discard Draft</button>
             </div>
-            <small>Saving never commits or pushes. The student preview is rebuilt locally for inspection.</small>
+            <small>Saving never commits or pushes. The student site is rebuilt locally with available and preview-only cards for inspection.</small>
           </aside>
         </div>
 

@@ -212,9 +212,21 @@ function setVisibilitySnapshot(snapshot) {
   visibilityState.snapshot = snapshot;
   visibilityState.draft = new Map(snapshot.lessons.map((lesson) => [lesson.id, lesson.visible]));
   visibilityState.preflight = null;
+  setWorkflowNotice("visibilitySaveNotice");
   setWorkflowNotice("publishNotice");
   renderVisibility();
   renderPublishPreflight();
+}
+
+function visibilitySaveFailureMessage(error) {
+  const detail = String(error?.message || "The save request failed.").trim();
+  if (error?.data?.code === "stale-course-map") {
+    return `${detail} Your draft is still protected. Choose Discard Draft, reload the course map, and then reapply the intended visibility change.`;
+  }
+  if (/failed to fetch|non-json content \(405\)|method not allowed/i.test(detail)) {
+    return `Save and Rebuild could not reach a compatible Mission Control server. Confirm the Desktop app is running at http://localhost:8123/, then retry. Your draft is still unsaved and protected; use Discard Draft only if you want to leave without applying it.`;
+  }
+  return `${detail} Mission Control could not confirm the save. Your draft is still unsaved and protected; retry Save and Rebuild, or use Discard Draft to leave without applying it.`;
 }
 
 function lessonMatchesVisibilitySearch(lesson, group, query) {
@@ -280,7 +292,7 @@ function renderVisibilityGroups() {
       badges.className = "visibility-card-badges";
       badges.append(visibilityBadge(lesson.status));
       if (lesson.isCurrent) badges.append(visibilityBadge("Current lesson", "current"));
-      badges.append(visibilityBadge(desiredVisible ? "Visible after save" : "Hidden after save", desiredVisible ? "visible" : "hidden"));
+      badges.append(visibilityBadge(desiredVisible ? "Materials available after save" : "Preview only after save", desiredVisible ? "visible" : "hidden"));
       const name = document.createElement("h4");
       name.textContent = lesson.title;
       const meta = document.createElement("p");
@@ -296,16 +308,17 @@ function renderVisibilityGroups() {
       toggle.role = "switch";
       toggle.checked = desiredVisible;
       toggle.disabled = lesson.isCurrent && desiredVisible;
-      toggle.setAttribute("aria-label", `${lesson.title} visibility`);
+      toggle.setAttribute("aria-label", `${lesson.title} material availability`);
       if (lesson.isCurrent && desiredVisible) {
-        toggle.title = "The current lesson must stay visible. Make another lesson current before hiding it.";
+        toggle.title = "The current lesson must keep its materials available. Make another lesson current before switching it to preview only.";
       }
       const toggleText = document.createElement("span");
       toggleText.className = "visibility-switch-text";
-      toggleText.textContent = desiredVisible ? "On" : "Off";
+      toggleText.textContent = desiredVisible ? "On · Available" : "Off · Preview";
       toggle.addEventListener("change", () => {
         visibilityState.draft.set(lesson.id, toggle.checked);
         invalidatePublishPreflight();
+        setWorkflowNotice("visibilitySaveNotice");
         setWorkflowNotice("visibilityNotice");
         renderVisibility();
       });
@@ -317,7 +330,8 @@ function renderVisibilityGroups() {
     container.append(section);
   }
 
-  count.textContent = `${shown} shown · ${visibleAfterSaveCount()} of ${snapshot.totals.lessons} visible after save`;
+  const availableCount = visibleAfterSaveCount();
+  count.textContent = `${shown} shown · ${availableCount} available after save · ${snapshot.totals.lessons - availableCount} preview only`;
   if (!shown) {
     const empty = document.createElement("div");
     empty.className = "preflight-empty";
@@ -338,15 +352,17 @@ function renderVisibilityPending() {
   const changes = visibilityPendingChanges();
   list.innerHTML = "";
   summary.classList.toggle("has-changes", changes.length > 0);
+  const availableCount = visibleAfterSaveCount();
+  const previewCount = (visibilityState.snapshot?.totals.lessons ?? 0) - availableCount;
   summary.textContent = changes.length
-    ? `${changes.length} pending change${changes.length === 1 ? "" : "s"}. After save: ${visibleAfterSaveCount()} lessons visible.`
-    : `No pending changes. ${visibleAfterSaveCount()} lessons are visible in the saved source.`;
+    ? `${changes.length} pending change${changes.length === 1 ? "" : "s"}. After save: ${availableCount} available, ${previewCount} preview only.`
+    : `No pending changes. ${availableCount} lessons are available and ${previewCount} are preview only in the saved source.`;
 
   for (const change of changes) {
     const row = document.createElement("div");
     row.className = "pending-change-row";
     const action = document.createElement("strong");
-    action.textContent = `${change.visible ? "Show" : "Hide"} ${change.lesson.key}`;
+    action.textContent = `${change.visible ? "Make available" : "Make preview only"} ${change.lesson.key}`;
     const title = document.createElement("span");
     title.textContent = change.lesson.title;
     row.append(action, title);
@@ -1440,6 +1456,7 @@ document.addEventListener("click", async (event) => {
       invalidatePublishPreflight();
       renderVisibility();
       setWorkflowNotice("visibilityNotice", "Discarded the local visibility draft. No source files changed.", "success");
+      setWorkflowNotice("visibilitySaveNotice", "Draft discarded. No source files changed, and it is safe to leave this view.", "success");
       writeLog("Visibility draft discarded; course-map.json was not changed.");
     }
 
@@ -1449,14 +1466,24 @@ document.addEventListener("click", async (event) => {
       button.disabled = true;
       button.textContent = "Saving and rebuilding…";
       setWorkflowNotice("visibilityNotice", "Saving the reviewed visibility draft and rebuilding the local student preview…", "warning");
+      setWorkflowNotice("visibilitySaveNotice", "Saving the reviewed draft and rebuilding the local student preview…", "warning");
       const result = await postJson("/api/course/visibility", {
         revision: visibilityState.snapshot.revision,
         changes: changes.map(({ lesson, visible }) => ({ lessonId: lesson.id, visible }))
       });
       setVisibilitySnapshot(result.visibility);
       setWorkflowNotice("visibilityNotice", result.message, "success");
-      await loadInstructorDashboard();
-      await loadTeachingWeek();
+      setWorkflowNotice("visibilitySaveNotice", `${result.message} Off lessons remain on the student site as locked previews. The draft is clear, and it is safe to leave this view.`, "success");
+      const refreshResults = await Promise.allSettled([loadInstructorDashboard(), loadTeachingWeek()]);
+      const refreshErrors = refreshResults
+        .filter((item) => item.status === "rejected")
+        .map((item) => item.reason?.message || "Unknown refresh error");
+      if (refreshErrors.length) {
+        const refreshMessage = `${result.message} The draft is clear, and it is safe to leave this view. Some related panels could not refresh: ${refreshErrors.join("; ")}`;
+        setWorkflowNotice("visibilityNotice", refreshMessage, "warning");
+        setWorkflowNotice("visibilitySaveNotice", refreshMessage, "warning");
+        writeLog(`Visibility saved, but related panels could not refresh: ${refreshErrors.join("; ")}.`);
+      }
       writeLog(result.message);
       writeLog("GitHub publishing was not run. Use Publishing Preflight when the local preview is ready.");
     }
@@ -1525,7 +1552,9 @@ document.addEventListener("click", async (event) => {
     }
   } catch (error) {
     if (action.kind === "saveVisibility" || action.kind === "refreshVisibility") {
-      setWorkflowNotice("visibilityNotice", error.message, "error");
+      const message = action.kind === "saveVisibility" ? visibilitySaveFailureMessage(error) : error.message;
+      setWorkflowNotice("visibilityNotice", message, "error");
+      if (action.kind === "saveVisibility") setWorkflowNotice("visibilitySaveNotice", message, "error");
     }
     if (["runPublishPreflight", "requestCoursePublish", "confirmCoursePublish"].includes(action.kind)) {
       if (error.data?.preflight) {
