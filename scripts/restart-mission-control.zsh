@@ -6,6 +6,7 @@ MISSION_DIR="/Users/bethanyevittsair2/Documents/GitHub/BUS123-mission-control-ac
 LOG_DIR="$MISSION_DIR/logs"
 SERVER_SCRIPT="$MISSION_DIR/scripts/start-mission-control-server.zsh"
 MISSION_URL="http://localhost:8123/?v=grading-launcher-1"
+NO_OPEN="${BUS123_MISSION_NO_OPEN:-0}"
 
 mkdir -p "$LOG_DIR"
 
@@ -17,16 +18,19 @@ for port in 8123 8124; do
   fi
 done
 
-/usr/bin/nohup /bin/zsh "$SERVER_SCRIPT" >> "$LOG_DIR/mission-control-server.log" 2>&1 </dev/null &
-disown
+if [[ "$NO_OPEN" == "1" ]]; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') Starting Mission Control with browser open suppressed." >> "$LOG_DIR/mission-control-server.log"
+else
+  (
+    for _ in {1..30}; do
+      if /usr/sbin/lsof -nP -iTCP:8123 -sTCP:LISTEN >/dev/null 2>&1; then
+        /usr/bin/open "$MISSION_URL"
+        exit 0
+      fi
+      sleep 0.25
+    done
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Mission Control did not start within the expected window." >> "$LOG_DIR/mission-control-server.log"
+  ) &
+fi
 
-for _ in {1..30}; do
-  if /usr/sbin/lsof -nP -iTCP:8123 -sTCP:LISTEN >/dev/null 2>&1; then
-    /usr/bin/open "$MISSION_URL"
-    exit 0
-  fi
-  sleep 0.25
-done
-
-echo "$(date '+%Y-%m-%d %H:%M:%S') Mission Control did not start within the expected window." >> "$LOG_DIR/mission-control-server.log"
-exit 1
+exec /bin/zsh "$SERVER_SCRIPT" >> "$LOG_DIR/mission-control-server.log" 2>&1
