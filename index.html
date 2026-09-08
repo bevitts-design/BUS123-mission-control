@@ -4,108 +4,103 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BUS123 Mission Control</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="assets/mission-control.css">
 </head>
 <body>
   <main class="shell">
     <aside class="rail" aria-label="Mission areas">
       <div class="brand-mark">B123</div>
-      <nav>
-        <a class="active" href="#today" data-view-link="today">Today</a>
-        <a href="#teach-this-week" data-view-link="teach-this-week">Teach This Week</a>
-        <a href="#lesson-workspace" data-view-link="lesson-workspace">Lesson Workspace</a>
-        <a href="#instructor" data-view-link="instructor">Instructor</a>
-        <a href="#visibility-publishing" data-view-link="visibility-publishing">Visibility &amp; Publish</a>
-        <a href="#materials" data-view-link="materials">Materials</a>
-        <a href="#grading" data-view-link="grading">Grading</a>
-        <a href="#course-map" data-view-link="course-map">Course Map</a>
-        <a href="#systems" data-view-link="systems">Tools</a>
-      </nav>
+      <nav aria-label="Main navigation"><a class="active" href="#teach" data-view-link="teach">Teach</a><a href="#lessons" data-view-link="lessons">Lessons</a><a href="#grading" data-view-link="grading">Grade</a><a href="#systems" data-view-link="systems">Settings &amp; Maintenance</a></nav>
     </aside>
 
     <section class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Local classroom operating system</p>
+          <p class="eyebrow">Prepare · Teach · Review</p>
           <h1>BUS123 Mission Control</h1>
         </div>
         <div class="quick-actions">
           <button data-action="open-canvas">Canvas</button>
           <button data-action="open-canvas-calendar">Canvas Calendar</button>
-          <button data-action="open-public-site">Open Public Site</button>
-          <button data-action="open-public-repo">Public Repo</button>
-          <button data-action="open-instructor-repo">Instructor Repo</button>
+          <button data-action="open-public-site">Preview student site</button>
+
+
         </div>
       </header>
 
-      <section id="today" class="view active-view">
-        <div class="today-layout">
-          <article class="current-lesson-band">
-            <div class="panel-heading">
-              <span class="status live">Today</span>
-              <span id="todayLessonKey">Loading current lesson</span>
-            </div>
-            <h2 id="todayLessonTitle">Course cockpit online</h2>
-            <p id="todayLessonMeta">Loading current lesson, prep status, and instructor readiness.</p>
-            <div class="command-row">
-              <button data-build-tool="open-teaching-bundle">Open Teaching Bundle</button>
-              <button data-view-target="teach-this-week">Teach This Week</button>
-              <button data-action="openTodayInstructorFolder" id="todayOpenInstructorFolder" disabled>Instructor Folder</button>
-              <button data-view-target="instructor">Prep Notes</button>
-              <button data-build-tool="validate-public">Validate Public</button>
-            </div>
-          </article>
 
-          <aside class="today-side">
-            <div class="metric-grid" id="todayMetrics">
-              <div>
-                <span class="metric">Public</span>
-                <strong id="publicStatus">Connected</strong>
-              </div>
-              <div>
-                <span class="metric">Instructor</span>
-                <strong id="instructorStatus">Detected</strong>
-              </div>
-              <div>
-                <span class="metric">Server</span>
-                <strong>8123</strong>
-              </div>
-            </div>
-            <article class="week-ahead-card">
-              <div class="panel-heading">
-                <span class="status draft">Canvas</span>
-                <span>Week Ahead</span>
-              </div>
-              <div class="week-ahead-summary" id="weekAheadSummary">Loading Canvas week-ahead data...</div>
-              <div class="week-ahead-list" id="weekAheadList" aria-live="polite"></div>
-              <div class="button-row">
-                <button data-action="open-canvas-calendar">Open Calendar</button>
-                <button data-build-tool="regenerate-index">Regenerate Public Index</button>
+
+
+
+      <section id="teach" class="view active-view" aria-labelledby="lessonWorkspaceTitle">
+<div class="teach-heading"><div><p class="eyebrow">Your teaching workspace</p><p id="currentCourseLesson">Loading current lesson…</p></div><button type="button" id="returnCurrentLesson">Open current lesson</button></div>
+<label class="lesson-picker-label">Choose a lesson<select id="lessonPicker"><option>Loading lessons…</option></select></label>
+<div id="workspaceLoadNotice" class="workflow-notice" role="status" hidden></div>
+<div class="lesson-intro"><p class="eyebrow" id="lessonWorkspaceKey"></p><h2 id="lessonWorkspaceTitle">Loading your lesson…</h2><p id="lessonWorkspaceMeta"></p><p id="lessonPurpose"></p><div id="lessonQuickActions" class="button-row"></div>              <div class="button-row">
+
+                <button data-action="setCurrentLesson" id="setCurrentLessonButton" disabled>Make Current</button>
+
+                <button data-action="openCurrentInstructorFolder" id="openCurrentInstructorFolder" disabled>Open Instructor Folder</button>
+              </div></div>
+<div class="lesson-package-preview" aria-label="Lesson materials and student access">
+            <article class="instructor-card">
+              <h3>Teach · Student materials</h3>
+              <div class="workspace-material-list" id="lessonWorkspaceStudentMaterials" aria-live="polite">
+                Loading student materials...
               </div>
             </article>
-            <div class="alert-list" id="todayAlerts" aria-live="polite"></div>
-          </aside>
-        </div>
-
-        <section class="quiet-section">
-          <div class="section-head">
-            <h2>Next Lessons</h2>
-            <button data-view-target="instructor">Open Instructor View</button>
+            <article class="instructor-card">
+              <h3>Prepare · Private teaching materials</h3>
+              <div class="workspace-material-list" id="lessonWorkspaceInstructorMaterials" aria-live="polite">
+                Loading instructor materials...
+              </div>
+            </article>
+            <article class="instructor-card">
+              <h3>Student access &amp; readiness</h3>
+              <div class="workspace-material-list" id="lessonWorkspacePublishingStatus" aria-live="polite">
+                Loading publishing status...
+              </div>
+            </article>
           </div>
-          <div class="next-lessons" id="nextLessons"></div>
-        </section>
-      </section>
+<article class="instructor-card current-prep">
+              <div class="panel-heading selected-lesson-heading">
+                <span class="status draft">Selected</span>
+                <span>Prep Notes</span>
+                <span class="pill type" id="selectedCurrentState">Loading</span>
+              </div>
+              <h3 id="currentLessonTitle">Preparation notes</h3>
+              <p id="currentLessonMeta">Loading lesson context...</p>
+              <label>
+                Prep status
+                <select id="prepStatus">
+                  <option value="not-started">Not started</option>
+                  <option value="drafting">Drafting</option>
+                  <option value="ready">Ready for class</option>
+                  <option value="needs-canvas">Needs Canvas</option>
+                </select>
+              </label>
+              <label>
+                Prep notes
+                <textarea id="prepNotes" rows="5" maxlength="50000" placeholder="Keep private prep notes for this lesson here."></textarea>
+              </label>
 
-      <section id="teach-this-week" class="view teaching-week-panel" aria-labelledby="teachWeekTitle">
+            <label>After-class notes<textarea id="lessonHandoff" rows="3" maxlength="50000" placeholder="What worked? What should change next time?"></textarea></label>
+<div class="button-row"><button data-action="savePrepNotes" disabled>Save Notes</button></div>
+<div id="notesNotice" class="workflow-notice" role="status" aria-live="polite">Loading private notes…</div>
+<div class="button-row"><button type="button" id="reloadNotes">Reload saved notes</button><button type="button" id="recoverNotes">Review previous save</button><button type="button" id="reviewBrowserNotes" hidden>Review browser copy</button><button type="button" id="exportNotes">Export saved notes</button></div>
+<small>Saved in the private instructor folder on this computer. The previous save is retained for recovery. Cross-computer syncing is not automatic.</small></article>
+<article class="instructor-card"><h3>Assess · Grading and student access</h3><p id="lessonAssessment">Loading grading support…</p><div class="button-row"><button type="button" id="gradeSelectedLesson">Grade this lesson</button><button data-view-target="visibility-publishing">Review student access &amp; publishing</button><button data-action="open-canvas">Open Canvas</button></div><p>Canvas uploads and publication still need your manual check.</p></article>
+<details class="upcoming-panel"><summary>This week · current and next two lessons</summary><section id="teach-this-week" class="teaching-week-panel" aria-labelledby="teachWeekTitle">
         <div class="panel-heading">
           <span class="status live">Weekly Focus</span>
-          <span>Teach This Week</span>
+          <span>This week</span>
         </div>
 
         <div class="teach-week-hero">
           <div>
             <p class="eyebrow">Current plus next two lessons</p>
-            <h2 id="teachWeekTitle">Prepare each class in one calm sequence</h2>
+            <h2 id="teachWeekTitle">Upcoming preparation</h2>
             <p id="teachWeekScope">Loading the maintained course-map order and current readiness…</p>
           </div>
           <button type="button" data-action="refreshTeachingWeek" id="refreshTeachingWeekButton">Refresh Weekly Plan</button>
@@ -144,114 +139,59 @@
             <div id="exceptionQueue" class="exception-queue" aria-live="polite" aria-busy="true"></div>
           </aside>
         </div>
-      </section>
+      </section></details>
+</section>
 
-      <section id="lesson-workspace" class="view lesson-workspace-placeholder">
-        <div class="panel-heading">
-          <span class="status draft">Milestone 2</span>
-          <span>Lesson Workspace</span>
-        </div>
-        <article class="panel">
-          <p class="eyebrow" id="lessonWorkspaceKey">Loading selected lesson</p>
-          <h2 id="lessonWorkspaceTitle">Lesson Workspace</h2>
-          <p id="lessonWorkspaceMeta">Loading the selected lesson and its student materials.</p>
-          <div class="lesson-package-preview" aria-label="Planned lesson package areas">
-            <article class="instructor-card">
-              <h3>Student Package</h3>
-              <div class="workspace-material-list" id="lessonWorkspaceStudentMaterials" aria-live="polite">
-                Loading student materials...
-              </div>
-            </article>
-            <article class="instructor-card">
-              <h3>Instructor Package</h3>
-              <div class="workspace-material-list" id="lessonWorkspaceInstructorMaterials" aria-live="polite">
-                Loading instructor materials...
-              </div>
-            </article>
-            <article class="instructor-card">
-              <h3>Publishing Package</h3>
-              <div class="workspace-material-list" id="lessonWorkspacePublishingStatus" aria-live="polite">
-                Loading publishing status...
-              </div>
-            </article>
-          </div>
-          <div class="button-row">
-            <button data-view-target="instructor">Choose a Lesson</button>
-            <button data-build-tool="lesson-readiness">Check Lesson Readiness</button>
-          </div>
-        </article>
-      </section>
 
-      <section id="instructor" class="view instructor-panel">
+
+      <section id="lessons" class="view" aria-labelledby="lessonsTitle"><p class="eyebrow">Course library</p><h2 id="lessonsTitle">Lessons</h2><p>Choose a lesson to open its materials, preparation notes, grading support, and student access.</p><label>Find a lesson<input id="lessonSearch" type="search" placeholder="Search title, skill, or lesson code"></label><div id="moduleDashboard" class="lesson-catalog"></div><details><summary>Browse all individual files</summary><section id="materials">
         <div class="panel-heading">
-          <span class="status live">Private</span>
-          <span>Instructor Site</span>
+          <span class="status live">Library</span>
+          <span>Materials Console</span>
         </div>
         <div class="console-head">
           <div>
-            <h2>Module readiness and prep cockpit</h2>
-            <p>Review what is public, what is private, what needs Canvas, and what still needs instructor prep before class.</p>
+            <h2>Review artifacts without folder hunting</h2>
+            <p>Filter public and private course materials by section, module, lesson, and artifact type.</p>
           </div>
-          <button data-action="refreshInstructor">Refresh</button>
+          <button data-action="refresh-materials">Refresh</button>
         </div>
-
-        <div class="instructor-workbench">
-          <aside class="module-list" id="moduleDashboard"></aside>
-
-          <section class="lesson-detail">
-            <div class="instructor-summary" id="instructorSummary" aria-live="polite">
-              Loading instructor dashboard...
-            </div>
-
-            <article class="instructor-card current-prep">
-              <div class="panel-heading selected-lesson-heading">
-                <span class="status draft">Selected</span>
-                <span>Prep Notes</span>
-                <span class="pill type" id="selectedCurrentState">Loading</span>
-              </div>
-              <h3 id="currentLessonTitle">Current lesson</h3>
-              <p id="currentLessonMeta">Loading lesson context...</p>
-              <label>
-                Prep status
-                <select id="prepStatus">
-                  <option value="not-started">Not started</option>
-                  <option value="drafting">Drafting</option>
-                  <option value="ready">Ready for class</option>
-                  <option value="needs-canvas">Needs Canvas</option>
-                </select>
-              </label>
-              <label>
-                Prep notes
-                <textarea id="prepNotes" rows="7" placeholder="Keep private prep notes for this lesson here."></textarea>
-              </label>
-              <div class="button-row">
-                <button data-action="savePrepNotes">Save Notes</button>
-                <button data-action="setCurrentLesson" id="setCurrentLessonButton" disabled>Make Current</button>
-                <button data-view-target="visibility-publishing">Review Visibility &amp; Publishing</button>
-                <button data-action="openCurrentInstructorFolder" id="openCurrentInstructorFolder" disabled>Open Instructor Folder</button>
-              </div>
-            </article>
-
-            <article class="instructor-card">
-              <div class="panel-heading">
-                <span class="status draft">Canvas</span>
-                <span>Upload Checklist</span>
-              </div>
-              <div class="check-grid" id="canvasChecklist"></div>
-            </article>
-
-            <article class="instructor-card">
-              <div class="panel-heading">
-                <span class="status draft">Grading</span>
-                <span>Workflow Queue</span>
-              </div>
-              <div class="check-grid" id="gradingQueue"></div>
-            </article>
-          </section>
+        <div class="filters">
+          <label>
+            Public or private
+            <select id="filterVisibility">
+              <option value="all">All materials</option>
+            </select>
+          </label>
+          <label>
+            Section
+            <select id="filterTrack">
+              <option value="all">All sections</option>
+            </select>
+          </label>
+          <label>
+            Module
+            <select id="filterModule">
+              <option value="all">All modules</option>
+            </select>
+          </label>
+          <label>
+            Lesson
+            <select id="filterLesson">
+              <option value="all">All lessons</option>
+            </select>
+          </label>
+          <label>
+            Type
+            <select id="filterType">
+              <option value="all">All types</option>
+            </select>
+          </label>
         </div>
-      </section>
-
-      <section id="visibility-publishing" class="view visibility-panel">
+        <div class="materials-summary" id="materialsSummary">Loading materials...</div>
+        <div class="materials-list" id="materialsList" aria-live="polite"></div>
+      </section></details></section>
+<section id="visibility-publishing" class="view visibility-panel">
         <div class="panel-heading">
           <span class="status live">Student Site</span>
           <span>Visibility &amp; Publishing</span>
@@ -323,53 +263,7 @@
         </section>
       </section>
 
-      <section id="materials" class="view">
-        <div class="panel-heading">
-          <span class="status live">Library</span>
-          <span>Materials Console</span>
-        </div>
-        <div class="console-head">
-          <div>
-            <h2>Review artifacts without folder hunting</h2>
-            <p>Filter public and private course materials by section, module, lesson, and artifact type.</p>
-          </div>
-          <button data-action="refresh-materials">Refresh</button>
-        </div>
-        <div class="filters">
-          <label>
-            Public or private
-            <select id="filterVisibility">
-              <option value="all">All materials</option>
-            </select>
-          </label>
-          <label>
-            Section
-            <select id="filterTrack">
-              <option value="all">All sections</option>
-            </select>
-          </label>
-          <label>
-            Module
-            <select id="filterModule">
-              <option value="all">All modules</option>
-            </select>
-          </label>
-          <label>
-            Lesson
-            <select id="filterLesson">
-              <option value="all">All lessons</option>
-            </select>
-          </label>
-          <label>
-            Type
-            <select id="filterType">
-              <option value="all">All types</option>
-            </select>
-          </label>
-        </div>
-        <div class="materials-summary" id="materialsSummary">Loading materials...</div>
-        <div class="materials-list" id="materialsList" aria-live="polite"></div>
-      </section>
+
 
       <section id="grading" class="view">
         <div class="panel-heading">
@@ -404,42 +298,9 @@
         </div>
       </section>
 
-      <section id="course-map" class="view">
-        <div class="panel-heading">
-          <span class="status live">Source</span>
-          <span>Student-Facing Course Map</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>System</th>
-                <th>Location</th>
-                <th>Use</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Public BUS123 site</td>
-                <td>BUS123-Solving-Business-Problems-with-Technology</td>
-                <td>Student-facing course map and released materials</td>
-              </tr>
-              <tr>
-                <td>Instructor materials</td>
-                <td>BUS123-instructor</td>
-                <td>Private scripts, grading, planning, and unreleased files</td>
-              </tr>
-              <tr>
-                <td>Mission control</td>
-                <td>BUS123-mission-control-active</td>
-                <td>Private local launcher and automation surface</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
 
-      <section id="systems" class="view grid-two">
+
+      <section id="systems" class="view grid-two"><article class="panel"><h2>Settings &amp; Maintenance</h2><p>Course folders and technical tools. Daily teaching work stays in Teach.</p><div class="button-row"><button data-action="open-public-repo">Open student materials folder</button><button data-action="open-instructor-repo">Open private instructor folder</button><button data-view-target="visibility-publishing">Student access &amp; publishing</button></div><p id="notesStorageLocation"></p></article>
         <article class="panel">
           <div class="panel-heading">
             <span class="status live">Ready</span>
@@ -464,7 +325,7 @@
             <li>Private module dashboard connected to course-map and instructor repo data</li>
             <li>Canvas checklist derived from QTI/private artifact availability</li>
             <li>Grading queue derived from instructor-only answer keys and solutions</li>
-            <li>Local prep notes and readiness flags for the current lesson</li>
+            <li>Private file storage for preparation and after-class notes</li>
           </ul>
         </article>
       </section>
@@ -484,6 +345,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="assets/mission-control.js?v=teach-this-week-1"></script>
+  <script type="module" src="assets/mission-control.js?v=lesson-workspace-2"></script>
 </body>
 </html>

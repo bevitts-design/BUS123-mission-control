@@ -1644,3 +1644,42 @@ th {
     justify-content: flex-start;
   }
 }
+
+/* One lesson workspace; secondary workflows stay available without parallel homes. */
+#teach.active-view { display: grid; gap: 1.15rem; }
+#teach > * { min-width: 0; }
+.teach-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.teach-heading p { margin: .25rem 0; }
+.lesson-picker-label { display: grid; gap: .5rem; max-width: 48rem; }
+.lesson-picker-label select { width: 100%; }
+.lesson-intro { padding: 1.4rem; border: 1px solid var(--line); border-left: 4px solid var(--gold); border-radius: 10px; background: var(--panel); }
+.lesson-intro h2 { margin: .3rem 0 .6rem; font-size: clamp(1.5rem, 3vw, 2.1rem); }
+.lesson-open-action { display: inline-flex; align-items: center; min-height: 2.6rem; padding: .55rem .9rem; border: 1px solid #628d75; border-radius: 8px; background: #243b32; color: var(--text); text-decoration: none; }
+#teach .lesson-package-preview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#teach .lesson-package-preview > :last-child { grid-column: 1 / -1; }
+#teach .workspace-material-row { overflow-wrap: anywhere; }
+#teach .current-prep { display: grid; gap: .8rem; }
+#teach textarea { width: 100%; }
+.upcoming-panel, #lessons > details { padding: 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+summary { cursor: pointer; font-weight: 650; padding: .35rem; }
+#teach-this-week { display: grid; margin-top: 1rem; }
+.lesson-catalog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin: 1rem 0; }
+.lesson-catalog-card { display: grid; gap: .5rem; text-align: left; padding: 1.1rem; }
+.lesson-catalog-card span { color: var(--muted); font-size: .85rem; }
+.lesson-catalog-card.selected { border-color: var(--gold); }
+#notesStorageLocation { overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+@media (max-width: 900px) {
+  #teach .lesson-package-preview, .lesson-catalog { grid-template-columns: 1fr; }
+  .teach-heading { align-items: start; flex-direction: column; }
+  .lesson-picker-label { max-width: 100%; }
+  .workspace { min-width: 0; }
+}
+#teach .workspace-material-row > .pill { flex-shrink: 0; white-space: nowrap; overflow-wrap: normal; }
+#teach .workspace-material-row > a.pill,
+#teach .workspace-material-row > button.pill { min-height: 2.25rem; display: inline-flex; align-items: center; }
+@media (max-width: 600px) {
+  .rail nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #teach .workspace-material-row { align-items: flex-start; }
+}

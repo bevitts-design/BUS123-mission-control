@@ -14,6 +14,8 @@ import {
   VisibilityUpdateError
 } from "./core/visibility.mjs";
 
+import { createNotesStore } from "./core/notes.mjs";
+
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 
 const HOME_DIR = process.env.HOME || process.env.USERPROFILE || "/Users/bethanyevittsair2";
@@ -24,6 +26,8 @@ const PUBLIC_REPO = process.env.BUS123_PUBLIC_REPO
   || join(HOME_DIR, "Documents/GitHub/BUS123-Solving-Business-Problems-with-Technology");
 const INSTRUCTOR_REPO = process.env.BUS123_INSTRUCTOR_REPO
   || join(HOME_DIR, "Documents/GitHub/BUS123-instructor");
+
+const notesStore = createNotesStore(INSTRUCTOR_REPO);
 
 const targets = {
   publicSite: `http://localhost:${PUBLIC_PORT}/`,
@@ -50,7 +54,7 @@ const buildTools = {
 
 const publishPaths = ["course-map.json", "index.html", "scripts/build-index.mjs"];
 const scanExtensions = new Set([".html", ".xlsx", ".pdf", ".zip", ".docx", ".md"]);
-const skippedDirs = new Set([".git", "assets", "tmp", "node_modules", "__MACOSX"]);
+const skippedDirs = new Set([".git", "assets", "tmp", "node_modules", "__MACOSX", ".mission-control"]);
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -175,7 +179,7 @@ function classifyMaterial(filePath) {
 
 function parseCourseFields(relativePath, fileName) {
   const pathParts = relativePath.split(sep);
-  const track = ["INTRO", "EXCEL", "MATH"].includes(pathParts[0]) ? pathParts[0] : "GENERAL";
+  const track = ["INTRO", "EXCEL", "MATH", "CAPSTONE"].includes(pathParts[0]) ? pathParts[0] : "GENERAL";
   const moduleMatch = relativePath.match(/(?:^|[-/])m(\d{2})(?:[-/]|$)/i);
   const lessonMatch = fileName.match(/(?:^|-)l(\d{2})(?:-|\.|$)/i);
 
@@ -1206,6 +1210,24 @@ async function servePublicStatic(request, response) {
 
 const server = createServer(async (request, response) => {
   try {
+    if (request.url === "/api/instructor/notes") {
+      const origin = request.headers.origin;
+      if (origin && ![`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`].includes(origin)) {
+        sendJson(response, 403, { error: "Open notes from the local Mission Control app." });
+        return;
+      }
+      response.setHeader("Cache-Control", "no-store");
+      const map = await readCourseMap();
+      const ids = (map.lessons || []).map(lesson => lesson.id);
+      try {
+        if (request.method === "GET") sendJson(response, 200, await notesStore.snapshot(ids));
+        else if (request.method === "POST" && request.headers["content-type"]?.startsWith("application/json")) {
+          sendJson(response, 200, await notesStore.save(await readRequestJson(request), ids));
+        } else sendJson(response, 405, { error: "Use the notes form in Mission Control." });
+      } catch (error) { sendJson(response, error.status || 500, { error: error.message }); }
+      return;
+    }
+
     if (request.method === "OPTIONS") {
       sendOptions(response);
       return;

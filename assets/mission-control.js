@@ -36,6 +36,8 @@ const visibilityState = {
   preflight: null
 };
 
+const notesState = { records: {}, previousRecords: {}, drafts: new Map(), browserCopies: {}, loaded: false, loading: null, saving: new Set() };
+
 const actions = {
   "open-canvas": { kind: "navigate", url: "https://endicott.instructure.com/courses/58218" },
   "open-canvas-calendar": { kind: "navigate", url: "https://endicott.instructure.com/calendar?include_contexts=course_58218" },
@@ -66,15 +68,17 @@ const actions = {
 };
 
 function setActiveView(viewId) {
-  const fallback = "today";
-  const target = document.querySelector(`#${viewId}`) ? viewId : fallback;
+  const aliases = { today: "teach", instructor: "teach", "lesson-workspace": "teach", "teach-this-week": "teach", materials: "lessons", "course-map": "lessons" };
+  const requested = aliases[viewId] || viewId;
+  const target = [...document.querySelectorAll(".view")].some(view => view.id === requested) ? requested : "teach";
   document.querySelectorAll("[data-view-link]").forEach((link) => {
-    link.classList.toggle("active", link.dataset.viewLink === target);
+    link.classList.toggle("active", link.dataset.viewLink === (target === "visibility-publishing" ? "lessons" : target));
   });
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("active-view", view.id === target);
   });
   if (window.location.hash !== `#${target}`) history.replaceState(null, "", `#${target}`);
+  window.scrollTo({ top: 0 });
 }
 
 function setupViews() {
@@ -87,7 +91,7 @@ function setupViews() {
     });
   });
 
-  setActiveView(window.location.hash.replace("#", "") || "today");
+  setActiveView(window.location.hash.replace("#", "") || "teach");
 }
 
 function writeLog(message) {
@@ -147,15 +151,73 @@ function prepStorageKey(lessonId) {
 }
 
 function getPrepState(lessonId) {
-  try {
-    return JSON.parse(localStorage.getItem(prepStorageKey(lessonId))) || {};
-  } catch {
-    return {};
-  }
+  return notesState.drafts.get(lessonId) || notesState.records[lessonId] || {};
 }
 
-function savePrepState(lessonId, state) {
-  localStorage.setItem(prepStorageKey(lessonId), JSON.stringify(state));
+function selectedId() { return selectedLesson(instructorState.dashboard || { modules: [] })?.id || ""; }
+function noteFields(record) {
+  return Object.fromEntries(["status", "notes", "handoff"].filter(key => record[key] !== undefined).map(key => [key, record[key]]));
+}
+async function loadNotes() {
+  if (notesState.loaded) return;
+  if (notesState.loading) return notesState.loading;
+  notesState.loading = (async () => {
+    const data = await getJson("/api/instructor/notes");
+    notesState.records = data.records;
+    notesState.previousRecords = data.previousRecords;
+    document.querySelector("#notesStorageLocation").textContent = `Private notes folder: ${data.storage}`;
+    const dashboard = await getJson("/api/instructor/dashboard");
+    let unreadable = 0;
+    for (const lesson of flattenedLessons(dashboard)) {
+      let old;
+      try { old = JSON.parse(localStorage.getItem(prepStorageKey(lesson.id)) || "null"); }
+      catch { unreadable++; continue; }
+      if (!old || typeof old !== "object" || !Object.keys(noteFields(old)).length) continue;
+      notesState.browserCopies[lesson.id] = old;
+      try {
+        const result = await postJson("/api/instructor/notes", { lessonId: lesson.id, patch: noteFields(old), migration: true });
+        notesState.records[lesson.id] = result.record;
+      } catch (error) {
+        if (!error.data || !error.message.includes("already exist")) throw error;
+        // A different private record wins. The browser copy is retained and can be reviewed.
+      }
+    }
+    notesState.loaded = true;
+    if (unreadable) setWorkflowNotice("workspaceLoadNotice", `${unreadable} browser note record(s) could not be read. Original browser data has been preserved.`, "warning");
+  })();
+  try { await notesState.loading; } finally { notesState.loading = null; }
+}
+
+async function savePrepState(lessonId, state) {
+  if (!notesState.loaded) throw new Error("Private notes are unavailable. Reload saved notes before saving; your draft is kept.");
+  if (notesState.saving.has(lessonId)) return;
+  notesState.saving.add(lessonId);
+  setWorkflowNotice("notesNotice", "Saving to your private instructor folder…", "warning");
+  try {
+    const result = await postJson("/api/instructor/notes", {
+      lessonId, expectedRevision: state.revision || null, patch: noteFields(state)
+    });
+    notesState.records[lessonId] = result.record;
+    if (result.previous) notesState.previousRecords[lessonId] = result.previous;
+    // Keep edits made while the request was in flight.
+    if (JSON.stringify(noteFields(getPrepState(lessonId))) === JSON.stringify(noteFields(state))) notesState.drafts.delete(lessonId);
+    else {
+      const draft = notesState.drafts.get(lessonId);
+      if (draft) draft.revision = result.record.revision;
+    }
+    if (instructorState.dashboard) renderCurrentPrep(instructorState.dashboard);
+    if (teachingState.data) renderTeachingWeek(teachingState.data);
+  } finally { notesState.saving.delete(lessonId); }
+}
+
+function captureNoteDraft() {
+  const id = selectedId();
+  if (!id) return;
+  notesState.drafts.set(id, { ...getPrepState(id), status: document.querySelector("#prepStatus").value,
+    notes: document.querySelector("#prepNotes").value, handoff: document.querySelector("#lessonHandoff").value });
+  const weeklyField = document.getElementById(`handoff-${id}`);
+  if (weeklyField) weeklyField.value = document.querySelector("#lessonHandoff").value;
+  setWorkflowNotice("notesNotice", "Unsaved changes · kept while you browse lessons. Save before closing the app.", "warning");
 }
 
 function createStatusPill(label, state = "type") {
@@ -554,6 +616,7 @@ async function loadGradingActivities() {
   const data = await getJson("/api/grading/activities");
   gradingState.activities = data.activities || [];
   renderGradingActivities();
+  if (instructorState.dashboard) renderLessonActions(selectedLesson(instructorState.dashboard));
 }
 
 function renderMaterials() {
@@ -666,21 +729,29 @@ function renderCurrentPrep(dashboard) {
   instructorState.lessons = lessons;
   const selected = selectedLesson(dashboard);
   if (!selected) return;
-  instructorState.currentLessonId = selected.id;
+  instructorState.selectedLessonId = selected.id;
   instructorState.currentFolderId = selected.instructorFolderId || "";
   const title = document.querySelector("#currentLessonTitle");
   const meta = document.querySelector("#currentLessonMeta");
-  if (title) title.textContent = selected.title;
-  if (meta) meta.textContent = `${selected.key} · ${selected.status} · ${selected.isVisible ? "Visible on student site" : "Hidden from student site"} · ${selected.materialCount} public materials`;
+  if (title) title.textContent = "Preparation & after-class notes";
+  if (meta) meta.textContent = `${selected.key} · ${selected.status} · ${selected.isVisible ? "Enabled in local course map" : "Disabled in local course map"} · ${selected.materialCount} public materials`;
   const saved = getPrepState(selected.id);
   const status = document.querySelector("#prepStatus");
   const notes = document.querySelector("#prepNotes");
   if (status) status.value = saved.status || "not-started";
   if (notes) notes.value = saved.notes || "";
+  document.querySelector("#lessonHandoff").value = saved.handoff || "";
+  document.querySelector("#reviewBrowserNotes").hidden = !notesState.browserCopies[selected.id];
+  document.querySelector("#recoverNotes").disabled = !notesState.previousRecords[selected.id];
+  document.querySelector('[data-action="savePrepNotes"]').disabled = !notesState.loaded;
+  setWorkflowNotice("notesNotice", notesState.drafts.has(selected.id)
+    ? "Unsaved changes · save before closing the app."
+    : saved.revision ? `Saved in your private instructor folder.${formatLocalUpdate(saved.updatedAt)}`
+    : notesState.loaded ? "No saved notes yet. Your first save creates a private lesson file." : "Private notes unavailable. Use Reload saved notes to retry.", notesState.drafts.has(selected.id) ? "warning" : "success");
   const currentState = document.querySelector("#selectedCurrentState");
   if (currentState) currentState.textContent = selected.isCurrent ? "Current" : "Not current";
   const setCurrent = document.querySelector("#setCurrentLessonButton");
-  if (setCurrent) setCurrent.disabled = selected.isCurrent;
+  if (setCurrent) { setCurrent.disabled = selected.isCurrent; setCurrent.textContent = "Make Current"; }
   const openFolder = document.querySelector("#openCurrentInstructorFolder");
   if (openFolder) openFolder.disabled = !selected.instructorFolderId;
 }
@@ -698,7 +769,7 @@ function renderLessonWorkspace(dashboard) {
   if (!lesson) {
     key.textContent = "No lesson selected";
     title.textContent = "Lesson Workspace";
-    meta.textContent = "Choose a lesson from the Instructor view.";
+    meta.textContent = "Choose a lesson above.";
     list.textContent = "No student materials to display.";
     instructorList.textContent = "No instructor materials to display.";
     publishingList.textContent = "No publishing status to display.";
@@ -713,6 +784,8 @@ function renderLessonWorkspace(dashboard) {
     `${lesson.materialCount} student material${lesson.materialCount === 1 ? "" : "s"}`
   ].filter(Boolean).join(" · ");
 
+  document.querySelector("#lessonPurpose").textContent = lesson.skillFocus?.length ? `Skills students practice: ${lesson.skillFocus.join(" · ")}` : "Learning context is available in the teaching materials below.";
+  renderLessonActions(lesson);
   list.innerHTML = "";
   renderInstructorPackage(lesson, instructorList);
   renderPublishingPackage(lesson, publishingList);
@@ -799,14 +872,19 @@ function renderInstructorPackage(lesson, container) {
   }));
 
   const additional = artifacts.filter((artifact) => artifact.id !== notes?.id && artifact.id !== answer?.id);
+  const extras = document.createElement("details");
+  const extraTitle = document.createElement("summary");
+  extraTitle.textContent = `More private materials (${additional.length})`;
+  extras.append(extraTitle);
   for (const artifact of additional) {
-    container.append(createInstructorMaterialRow({
+    extras.append(createInstructorMaterialRow({
       label: labelFor(artifact.type),
       detail: artifact.relativePath,
       state: "Available",
       materialId: artifact.id
     }));
   }
+  if (additional.length) container.append(extras);
 }
 
 function renderPublishingPackage(lesson, container) {
@@ -826,9 +904,9 @@ function renderPublishingPackage(lesson, container) {
   });
 
   container.append(createInstructorMaterialRow({
-    label: "Website",
+    label: "Local student files",
     detail: websiteReady
-      ? "All listed student files are available"
+      ? "All listed files exist locally; live website deployment is not verified here"
       : publicArtifacts.length
         ? `${lesson.missingPublic?.length || 0} listed student file${lesson.missingPublic?.length === 1 ? "" : "s"} missing`
         : "No student materials are listed in the course map",
@@ -837,7 +915,7 @@ function renderPublishingPackage(lesson, container) {
 
   container.append(createInstructorMaterialRow({
     label: "Canvas",
-    detail: `${CANVAS_MANUAL_WORKFLOW_WARNING}.`,
+    detail: "Open Canvas and check the lesson module and assignment manually.",
     state: "Manual workflow"
   }));
 
@@ -858,92 +936,55 @@ function renderPublishingPackage(lesson, container) {
 
 function renderModuleDashboard(dashboard) {
   const container = document.querySelector("#moduleDashboard");
-  if (!container) return;
+  const search = document.querySelector("#lessonSearch").value.trim().toLowerCase();
   container.innerHTML = "";
-  for (const module of dashboard.modules) {
-    const section = document.createElement("section");
-    section.className = "module-card";
-    const heading = document.createElement("h3");
-    heading.textContent = `${module.track} ${module.module}`;
-    section.append(heading);
-    for (const lesson of module.lessons) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.lessonId = lesson.id;
-      button.className = lesson.id === instructorState.currentLessonId ? "selected" : "";
-      button.innerHTML = `<strong>${lesson.title}</strong><span>${lesson.status} · ${lesson.isVisible ? "Visible" : "Hidden"}</span>`;
-      section.append(button);
-    }
-    container.append(section);
+  const lessons = flattenedLessons(dashboard).sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999));
+  for (const lesson of lessons) {
+    if (![lesson.title, lesson.key, ...(lesson.skillFocus || [])].join(" ").toLowerCase().includes(search)) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.lessonId = lesson.id;
+    button.dataset.viewTarget = "teach";
+    button.className = `lesson-catalog-card ${lesson.id === selectedId() ? "selected" : ""}`;
+    const title = document.createElement("strong"); title.textContent = lesson.title;
+    const detail = document.createElement("span"); detail.textContent = `${lesson.key}${lesson.isCurrent ? " · Current lesson" : ""}`;
+    button.append(title, detail); container.append(button);
   }
+  if (!container.childElementCount) container.textContent = "No matching lessons. Try a title, skill, or lesson code.";
 }
 
-function renderToday(dashboard) {
-  const lesson = dashboard.currentLesson;
-  if (!lesson) return;
-  document.querySelector("#todayLessonKey").textContent = lesson.key;
-  document.querySelector("#todayLessonTitle").textContent = lesson.title;
-  document.querySelector("#todayLessonMeta").textContent = `${lesson.status} · ${lesson.materialCount} public materials · ${lesson.privateArtifactCount} private artifacts`;
-  instructorState.todayFolderId = lesson.instructorFolderId || "";
-  document.querySelector("#todayOpenInstructorFolder").disabled = !lesson.instructorFolderId;
+function renderLessonActions(lesson) {
+  const container = document.querySelector("#lessonQuickActions"); container.innerHTML = "";
+  for (const artifact of (lesson.publicArtifacts || []).filter(a => a.exists && /slide|workbook|interactive|profile|assignment/i.test(a.type))) {
+    const link = document.createElement("a"); link.className = "lesson-open-action";
+    link.href = artifact.url; link.target = "_blank"; link.rel = "noreferrer"; link.textContent = `Open ${artifact.type}`;
+    container.append(link);
+  }
+  const match = gradingState.activities.find(a => a.id === `bus123-${lesson.id}`);
+  document.querySelector("#gradeSelectedLesson").disabled = !match;
+  document.querySelector("#lessonAssessment").textContent = match
+    ? `Matching grader: ${match.title}. Review its results before recording grades.`
+    : "No exact lesson grader is registered. Review the private answer materials above; other activities remain available in Grade.";
 }
 
 function renderInstructorDashboard(dashboard) {
   instructorState.dashboard = dashboard;
   instructorState.currentLessonId = dashboard.currentLesson?.id || "";
-  const summary = document.querySelector("#instructorSummary");
-  summary.innerHTML = "";
-  [
-    ["Modules", dashboard.totals.modules],
-    ["Lessons", dashboard.totals.lessons],
-    ["Current", dashboard.totals.current],
-    ["Needs review", dashboard.totals.needsReview],
-    ["Private artifacts", dashboard.totals.privateArtifacts]
-  ].forEach(([label, value]) => {
-    const item = document.createElement("div");
-    const metric = document.createElement("span");
-    metric.className = "metric";
-    metric.textContent = label;
-    const count = document.createElement("strong");
-    count.textContent = value;
-    item.append(metric, count);
-    summary.append(item);
-  });
-
   renderCurrentPrep(dashboard);
   renderLessonWorkspace(dashboard);
-
-  const canvasItems = dashboard.modules
-    .flatMap((module) => module.lessons)
-    .filter((lesson) => lesson.privateArtifactsByType.qti || lesson.status === "Current")
-    .map((lesson) => ({
-      title: lesson.title,
-      meta: `${lesson.key} · ${lesson.privateArtifactsByType.qti || 0} QTI package${lesson.privateArtifactsByType.qti === 1 ? "" : "s"}`,
-      status: lesson.privateArtifactsByType.qti ? "Package ready" : "Needs review",
-      state: lesson.privateArtifactsByType.qti ? "ready" : "review"
-    }));
-  renderCheckItems(document.querySelector("#canvasChecklist"), canvasItems);
-
-  const gradingItems = dashboard.modules
-    .flatMap((module) => module.lessons)
-    .filter((lesson) => lesson.privateArtifactsByType["activity-key"] || lesson.privateArtifactsByType.solution)
-    .map((lesson) => ({
-      title: lesson.title,
-      meta: `${lesson.key} · ${summarizeLessonPrivateArtifacts(lesson)}`,
-      status: "Instructor files",
-      state: "ready"
-    }));
-  renderCheckItems(document.querySelector("#gradingQueue"), gradingItems);
-
   renderModuleDashboard(dashboard);
-  renderToday(dashboard);
+  document.querySelector("#currentCourseLesson").textContent = `Current course lesson: ${dashboard.currentLesson?.title || "Not selected"}`;
+  const picker = document.querySelector("#lessonPicker"); picker.innerHTML = "";
+  for (const lesson of flattenedLessons(dashboard).sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))) {
+    const option = document.createElement("option"); option.value = lesson.id;
+    option.textContent = `${lesson.title}${lesson.isCurrent ? " — Current" : ""}`; picker.append(option);
+  }
+  picker.value = selectedId();
 }
 
 async function loadInstructorDashboard() {
-  const summary = document.querySelector("#instructorSummary");
-  if (!summary) return;
-
-  summary.textContent = "Loading instructor dashboard...";
+  try { await loadNotes(); }
+  catch (error) { setWorkflowNotice("workspaceLoadNotice", `Private notes could not load: ${error.message} Your browser copies are preserved.`, "error"); }
   const dashboard = await getJson("/api/instructor/dashboard");
   renderInstructorDashboard(dashboard);
 }
@@ -1083,12 +1124,22 @@ function renderWeeklyStep(lesson, rawStep) {
     input.maxLength = 600;
     input.placeholder = "What worked, what needs follow-up, or what to adjust next time?";
     input.value = saved.handoff || "";
+    input.addEventListener("input", () => {
+      notesState.drafts.set(lesson.id, { ...getPrepState(lesson.id), handoff: input.value });
+      if (selectedId() === lesson.id) document.querySelector("#lessonHandoff").value = input.value;
+      const feedback = document.getElementById(`handoff-notice-${lesson.id}`);
+      if (feedback) feedback.textContent = "Unsaved notes";
+      setWorkflowNotice("notesNotice", "Unsaved after-class notes · save before closing the app.", "warning");
+    });
     const save = teachingActionButton({ label: "Save Handoff" });
     save.dataset.action = "saveAfterClassHandoff";
     save.dataset.handoffLessonId = lesson.id;
     save.setAttribute("aria-label", `Save after-class handoff for ${lesson.title}`);
     label.append(input);
-    actionArea.append(label, save);
+    const feedback = document.createElement("p"); feedback.id = `handoff-notice-${lesson.id}`;
+    feedback.setAttribute("role", "status");
+    feedback.textContent = notesState.drafts.has(lesson.id) ? "Unsaved notes" : saved.revision ? "Saved in private instructor folder" : "";
+    actionArea.append(label, save, feedback);
   } else if (step.action) {
     actionArea.append(teachingActionButton({
       label: weeklyStepActionLabel(step),
@@ -1246,6 +1297,7 @@ function renderTeachingWeekError(error) {
 }
 
 async function loadTeachingWeek() {
+  try { await loadNotes(); } catch {}
   teachingState.loading = true;
   const lessons = document.querySelector("#teachWeekLessons");
   const queue = document.querySelector("#exceptionQueue");
@@ -1326,7 +1378,7 @@ function renderCanvasWeekAhead(data) {
 
 async function loadCanvasWeekAhead() {
   const data = await getJson("/api/canvas/week-ahead");
-  renderCanvasWeekAhead(data);
+  if (document.querySelector("#weekAheadSummary")) renderCanvasWeekAhead(data);
 }
 
 function renderBuildToolResult(result) {
@@ -1400,34 +1452,36 @@ document.addEventListener("click", async (event) => {
     }
 
     if (action.kind === "savePrepNotes") {
-      const lessonId = instructorState.currentLessonId;
-      savePrepState(lessonId, {
+      button.disabled = true;
+      const lessonId = selectedId();
+      await savePrepState(lessonId, {
         ...getPrepState(lessonId),
         status: document.querySelector("#prepStatus").value,
         notes: document.querySelector("#prepNotes").value,
-        updatedAt: new Date().toISOString()
+        handoff: document.querySelector("#lessonHandoff").value
       });
       if (teachingState.data) renderTeachingWeek(teachingState.data);
-      writeLog("Prep notes saved locally.");
+      writeLog("Prep and after-class notes saved in the private instructor folder.");
     }
 
     if (action.kind === "saveAfterClassHandoff") {
+      button.disabled = true;
       const lessonId = button.dataset.handoffLessonId;
       if (!lessonId) throw new Error("Choose a lesson before saving an after-class handoff");
       const field = document.querySelector(`#handoff-${lessonId}`);
       if (!field) throw new Error("The after-class handoff field is unavailable");
       const saved = getPrepState(lessonId);
-      savePrepState(lessonId, {
+      await savePrepState(lessonId, {
         ...saved,
         handoff: field.value.trim(),
         handoffUpdatedAt: new Date().toISOString()
       });
       if (teachingState.data) renderTeachingWeek(teachingState.data);
-      writeLog(`After-class handoff saved locally for ${lessonId}.`);
+      writeLog(`After-class notes saved in the private instructor folder for ${lessonId}.`);
     }
 
     if (action.kind === "setCurrentLesson") {
-      const lessonId = instructorState.currentLessonId;
+      const lessonId = selectedId();
       if (!lessonId) throw new Error("Choose a lesson before setting the current lesson");
       button.disabled = true;
       button.textContent = "Updating...";
@@ -1551,6 +1605,11 @@ document.addEventListener("click", async (event) => {
       writeLog(result.message);
     }
   } catch (error) {
+    if (["savePrepNotes", "saveAfterClassHandoff"].includes(action.kind)) {
+      setWorkflowNotice("notesNotice", `Not saved: ${error.message}`, "error");
+      const feedback = document.getElementById(`handoff-notice-${button.dataset.handoffLessonId}`);
+      if (feedback) feedback.textContent = `Not saved: ${error.message}`;
+    }
     if (action.kind === "saveVisibility" || action.kind === "refreshVisibility") {
       const message = action.kind === "saveVisibility" ? visibilitySaveFailureMessage(error) : error.message;
       setWorkflowNotice("visibilityNotice", message, "error");
@@ -1565,6 +1624,7 @@ document.addEventListener("click", async (event) => {
     }
     writeLog(`Error: ${error.message}. Make sure Mission Control is running at http://localhost:8123/.`);
   } finally {
+    if (["savePrepNotes", "saveAfterClassHandoff"].includes(action.kind)) button.disabled = !notesState.loaded;
     if (action.kind === "grading") {
       button.disabled = false;
       button.textContent = "Run Grader";
@@ -1614,7 +1674,7 @@ document.querySelector("#publishCommitMessage")?.addEventListener("input", () =>
 });
 
 window.addEventListener("beforeunload", (event) => {
-  if (!visibilityPendingChanges().length) return;
+  if (!visibilityPendingChanges().length && !notesState.drafts.size) return;
   event.preventDefault();
   event.returnValue = "";
 });
@@ -1700,7 +1760,7 @@ loadMaterials().catch((error) => {
 loadInstructorDashboard().catch((error) => {
   writeLog(`Instructor dashboard error: ${error.message}.`);
   const summary = document.querySelector("#instructorSummary");
-  if (summary) summary.textContent = "Instructor dashboard could not load.";
+  setWorkflowNotice("workspaceLoadNotice", `Lessons could not load: ${error.message}. Start Mission Control and reload.`, "error");
 });
 
 loadTeachingWeek().catch((error) => {
@@ -1709,7 +1769,7 @@ loadTeachingWeek().catch((error) => {
 
 loadCanvasWeekAhead().catch((error) => {
   writeLog(`Canvas week-ahead error: ${error.message}.`);
-  renderCanvasWeekAhead({
+  if (document.querySelector("#weekAheadSummary")) renderCanvasWeekAhead({
     generatedAt: null,
     items: [],
     error: "Canvas week-ahead data could not load."
@@ -1721,3 +1781,52 @@ loadGradingActivities().catch((error) => {
   const summary = document.querySelector("#gradingSummary");
   if (summary) summary.textContent = "Private grading workflows could not load.";
 });
+
+for (const id of ["prepNotes", "prepStatus", "lessonHandoff"]) document.querySelector(`#${id}`).addEventListener("input", captureNoteDraft);
+document.querySelector("#lessonPicker").addEventListener("change", event => {
+  instructorState.selectedLessonId = event.target.value;
+  renderInstructorDashboard(instructorState.dashboard);
+});
+document.querySelector("#lessonSearch").addEventListener("input", () => { if (instructorState.dashboard) renderModuleDashboard(instructorState.dashboard); });
+document.querySelector("#returnCurrentLesson").addEventListener("click", () => {
+  instructorState.selectedLessonId = instructorState.dashboard?.currentLesson?.id || "";
+  if (instructorState.dashboard) renderInstructorDashboard(instructorState.dashboard);
+});
+document.querySelector("#gradeSelectedLesson").addEventListener("click", () => {
+  const match = gradingState.activities.find(a => a.id === `bus123-${selectedId()}`);
+  if (!match) return;
+  document.querySelector("#gradingActivity").value = match.id;
+  document.querySelector("#gradingActivity").dispatchEvent(new Event("change"));
+  setActiveView("grading");
+});
+document.querySelector("#reloadNotes").addEventListener("click", async () => {
+  const id = selectedId();
+  if (notesState.drafts.has(id) && !confirm("Discard the unsaved draft for this lesson and reload its saved notes?")) return;
+  try {
+    if (!notesState.loaded) await loadNotes();
+    const data = await getJson("/api/instructor/notes");
+    notesState.records = data.records; notesState.previousRecords = data.previousRecords;
+    notesState.loaded = true; notesState.drafts.delete(id);
+    setWorkflowNotice("workspaceLoadNotice");
+    renderCurrentPrep(instructorState.dashboard);
+  } catch (error) { setWorkflowNotice("notesNotice", `Could not reload: ${error.message}. Your draft is kept.`, "error"); }
+});
+function reviewNoteCopy(source) {
+  const id = selectedId(); const copy = source[id]; if (!copy) return;
+  if (notesState.drafts.has(id) && !confirm("Replace this lesson's unsaved draft with the recovery copy?")) return;
+  notesState.drafts.set(id, { ...notesState.records[id], ...noteFields(copy) });
+  renderCurrentPrep(instructorState.dashboard);
+  setWorkflowNotice("notesNotice", "Recovery copy loaded for review. Save Notes to replace the current private record.", "warning");
+}
+document.querySelector("#recoverNotes").addEventListener("click", () => reviewNoteCopy(notesState.previousRecords));
+document.querySelector("#reviewBrowserNotes").addEventListener("click", () => reviewNoteCopy(notesState.browserCopies));
+document.querySelector("#exportNotes").addEventListener("click", async () => {
+  try {
+    const data = await getJson("/api/instructor/notes");
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a"); link.href = url; link.download = "BUS123-private-teaching-notes.json"; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setWorkflowNotice("notesNotice", "Exported saved private notes and previous versions. Unsaved drafts are not included.", "success");
+  } catch (error) { setWorkflowNotice("notesNotice", `Export failed: ${error.message}`, "error"); }
+});
+window.addEventListener("hashchange", () => setActiveView(location.hash.slice(1)));

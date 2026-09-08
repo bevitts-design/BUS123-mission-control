@@ -1,5 +1,13 @@
 # BUS123 Lesson Workspace
 
+## Implemented desktop workflow (September 2026)
+
+Teach is the default and only preparation workspace. The lesson picker and searchable Lessons catalog share a browsing selection; Make Current remains an explicit separate course action. Teach includes material launch buttons, private guide/answer resources, durable preparation and after-class notes, matching grading support, student access, and an expandable current-plus-next-two overview. Technical tools are under Settings & Maintenance.
+
+Notes are stored under the private instructor repository's `.mission-control/notes/` directory, with revision checks, previous-save recovery, and export. Existing browser notes are imported without replacing differing private notes; originals remain in the browser. See README for storage and recovery details. Cross-computer synchronization is not implemented.
+
+The sections below describe the broader design direction. Web Edition and profile capabilities are future scope, not claims about the current desktop implementation.
+
 ## Purpose
 
 The Lesson Workspace is the lesson-centered home for preparing, teaching, reviewing, and publishing one BUS123 lesson. Finder and Windows Explorer remain available for file browsing, but the Lesson Workspace organizes files by instructional purpose rather than folder location.

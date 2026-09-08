@@ -11,16 +11,22 @@ The Desktop app starts one detached Node process for both services and opens the
 
 Canvas remains a manual publishing and verification workflow. Institutional admin restrictions prevent automated token access, so Mission Control shows this limitation as a warning without blocking **Ready to Teach**.
 
-## Teach This Week
+## Teaching workspace
 
-The dedicated **Teach This Week** view turns the maintained lesson and readiness data into a current-plus-next-two workflow.
+The default **Teach** screen combines the selected lesson's student materials, private teaching guide and answer materials, prep and after-class notes, exact matching grader, and student-access tools. **Lessons** provides a searchable catalog and an expandable individual-file browser. **Grade** and **Settings & Maintenance** retain grading and technical tools. Older Today, Instructor, Lesson Workspace, and Teach This Week links route to Teach.
 
-- Lesson order, release status, and visibility come directly from the public repository's `course-map.json`.
-- Student and Instructor Package checks are derived from the current public and private repositories using the shared readiness policy.
-- Each class follows the same six-step sequence: student package, instructor package, prep notes, manual Canvas action, activity/grader readiness, and after-class handoff.
-- Prep status, prep notes, and after-class handoff use the existing per-lesson private browser record. Mission Control does not create a second lesson catalog or copy those notes into tracked files.
-- The Exception Queue includes only actionable package blockers, near-term release/visibility gaps, stale or unavailable Canvas context, explicit prep gaps, and lessons with an activity but no exact private grader.
-- Canvas remains manual. A stale week-ahead snapshot is elevated for attention, but Mission Control never claims to upload, publish, or verify Canvas.
+Choosing a lesson changes only the workspace selection. **Make Current** is the explicit action that changes the public course's current lesson; existing save, rebuild, and publishing protections still apply. The weekly current-plus-next-two projection is expandable within Teach and remains derived from `course-map.json`.
+
+### Private notes and recovery
+
+- `GET/POST /api/instructor/notes` reads/writes one JSON file per known lesson under `BUS123-instructor/.mission-control/notes/`. Notes never go into Mission Control or public course outputs. This hidden directory is excluded from the material scanner.
+- **Save Notes** saves preparation status, prep notes, and after-class notes. A visible message distinguishes unsaved drafts, confirmed saves, and failures. Unsaved drafts stay with their lesson while browsing; closing/reloading warns while drafts remain.
+- Each successful update keeps the previous record as `<lesson-id>.previous.json`. **Review previous save** loads that copy as an unsaved draft; Save Notes explicitly restores it. **Export saved notes** downloads a private JSON snapshot including previous versions, not unsaved drafts.
+- Saves check revisions and serialize writes per lesson. A stale window cannot silently replace a newer record. **Reload saved notes** fetches the saved version; discarding an unsaved draft requires confirmation. Corrupt or unwritable storage reports an error instead of claiming success.
+- On opening the app, legacy `bus123-prep:<lesson-id>` records from that browser and origin are imported only if no different private record exists. Import is idempotent. Original browser records are retained; **Review browser copy** lets the instructor compare by loading one as a draft. Other browsers/computers must open the app themselves for their old records to be discovered.
+- These are private local files, not automatic cross-computer synchronization or an off-device backup. Include the private instructor folder in the instructor's normal backup workflow; no commit, push, or cloud sync happens on Save Notes.
+
+The Canvas calendar remains a maintained snapshot. Mission Control does not claim to upload, publish, or verify Canvas. Local material availability is not proof of live website deployment.
 
 ## Lesson Visibility and GitHub Publishing
 
