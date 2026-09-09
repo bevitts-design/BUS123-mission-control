@@ -23,7 +23,7 @@
         <div class="quick-actions">
           <button data-action="open-canvas">Canvas</button>
           <button data-action="open-canvas-calendar">Canvas Calendar</button>
-          <button data-action="open-public-site">Preview student site</button>
+          <button data-action="open-public-site">Preview local changes</button>
 
 
         </div>
@@ -35,11 +35,25 @@
 
       <section id="teach" class="view active-view" aria-labelledby="lessonWorkspaceTitle">
 <div class="teach-heading"><div><p class="eyebrow">Your teaching workspace</p><p id="currentCourseLesson">Loading current lesson…</p></div><button type="button" id="returnCurrentLesson">Open current lesson</button></div>
-<label class="lesson-picker-label">Choose a lesson<select id="lessonPicker"><option>Loading lessons…</option></select></label>
+<label class="lesson-picker-label">Lesson you’re working on<select id="lessonPicker"><option>Loading lessons…</option></select></label>
+<article class="instructor-card website-update-panel" aria-labelledby="websiteUpdateTitle">
+  <h2 id="websiteUpdateTitle">Student website</h2>
+  <p id="liveWebsiteLesson" aria-live="polite">Live website: Checking…</p>
+  <small id="liveWebsiteChecked"></small>
+  <p>Choose a lesson above, then review its website update. Browsing lessons does not change what students see.</p>
+  <div class="button-row">
+    <button id="updateStudentWebsite" type="button">Update student website</button>
+    <button id="checkLiveWebsite" type="button">Check live website</button>
+    <a href="https://bevitts-design.github.io/BUS123-Solving-Business-Problems-with-Technology/" target="_blank" rel="noopener">Open live student website ↗</a>
+  </div>
+  <p id="websiteUpdateNotice" role="status" aria-live="polite">Website updates are reviewed before publishing.</p>
+  <details><summary>Technical details</summary><a href="https://github.com/bevitts-design/BUS123-Solving-Business-Problems-with-Technology/actions" target="_blank" rel="noopener">Deployment details ↗</a><p><button data-view-target="visibility-publishing">Student access &amp; advanced publishing</button></p></details>
+</article>
+
 <div id="workspaceLoadNotice" class="workflow-notice" role="status" hidden></div>
 <div class="lesson-intro"><p class="eyebrow" id="lessonWorkspaceKey"></p><h2 id="lessonWorkspaceTitle">Loading your lesson…</h2><p id="lessonWorkspaceMeta"></p><p id="lessonPurpose"></p><div id="lessonQuickActions" class="button-row"></div>              <div class="button-row">
 
-                <button data-action="setCurrentLesson" id="setCurrentLessonButton" disabled>Make Current</button>
+                <button data-action="setCurrentLesson" id="setCurrentLessonButton" disabled>Save locally for later</button>
 
                 <button data-action="openCurrentInstructorFolder" id="openCurrentInstructorFolder" disabled>Open Instructor Folder</button>
               </div></div>
@@ -332,6 +346,16 @@
     </section>
   </main>
 
+  <dialog id="websiteUpdateDialog" class="publish-dialog" aria-labelledby="websiteReviewTitle">
+    <div class="dialog-content">
+      <h2 id="websiteReviewTitle">Review student website update</h2>
+      <p id="websiteReviewSummary"></p>
+      <p id="websiteReviewChanges" style="white-space:pre-wrap"></p>
+      <p>This publishes all saved changes in the reviewed course files. Any additional content changes appear in Technical details. Canvas is unchanged.</p>
+      <details><summary>Technical details · included changes and checks</summary><pre id="websiteReviewDetails"></pre></details>
+      <div class="dialog-actions"><button id="cancelWebsiteUpdate" type="button">Keep local for later</button><button id="confirmWebsiteUpdate" type="button">Confirm website update</button></div>
+    </div>
+  </dialog>
   <dialog id="publishConfirmationDialog" class="publish-dialog" aria-labelledby="publishConfirmationTitle">
     <div class="dialog-content">
       <p class="eyebrow">Final confirmation</p>
@@ -345,6 +369,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="assets/mission-control.js?v=lesson-workspace-2"></script>
+  <script type="module" src="assets/mission-control.js?v=website-update-1"></script>
 </body>
 </html>

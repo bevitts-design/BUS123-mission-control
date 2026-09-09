@@ -145,3 +145,9 @@ The first functional Lesson Workspace should:
 5. Keep Canvas as a visible, non-blocking manual-workflow warning while institutional admin restrictions prevent token access; keep QTI as a status placeholder until its workflow is complete.
 
 Visual polish follows after the workflow and data are reliable.
+
+## Website update workflow (September 9, 2026)
+
+Teach now shows the verified live lesson separately from the locally saved lesson. The lesson picker only changes browsing selection. Update student website saves the selected visible lesson locally, rebuilds, runs the existing guarded publishing preflight, and presents the lesson/access changes plus an expandable full diff. One explicit confirmation commits and pushes the reviewed scope. Keep local for later leaves the prepared files unpublished. Hidden lessons still require an explicit student-access change first.
+
+Live verification checks both the published course map and the current homepage card, and compares both published files against local files. Pending publications are verified against their exact Git commit, so newer local drafts do not prevent confirmation of a completed deployment. GitHub Actions failures are reported beside the update action. After publishing, the browser checks every ten seconds for up to about four minutes, then offers manual checking and deployment details; it never calls a push alone live success. Pending verification survives a tab reload. Network errors are shown as unable to verify. Existing advanced publishing controls remain available. No app implementation changes are automatically committed or published.

@@ -1683,3 +1683,12 @@ summary { cursor: pointer; font-weight: 650; padding: .35rem; }
   .rail nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #teach .workspace-material-row { align-items: flex-start; }
 }
+
+.website-update-panel { border-left: 4px solid var(--gold); display: grid; gap: .6rem; }
+#liveWebsiteLesson { font-size: 1.15rem; font-weight: 650; }
+#updateStudentWebsite { background: var(--gold); color: #142820; font-weight: 700; }
+#websiteUpdateNotice { padding: .75rem; border: 1px solid var(--line); border-radius: 8px; }
+#websiteUpdateNotice[data-state="error"] { border-color: #bd4949; }
+#websiteUpdateNotice[data-state="success"] { border-color: #378963; }
+#websiteReviewDetails { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 35vh; overflow: auto; font-size: .8rem; }
+#websiteUpdateDialog { max-height: 85vh; overflow: auto; }

@@ -1,3 +1,4 @@
+import { inspectLiveWebsite } from "./core/live-publishing.mjs";
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, normalize, relative, sep } from "node:path";
@@ -706,6 +707,21 @@ async function collectCoursePublishPreflight({ refreshRemote = true, rebuild = t
       : "No unrelated public-repository changes were detected."
   );
 
+  const lessonChanges = [];
+  let reviewDiff = "";
+  try {
+    const before = JSON.parse((await runPublicGit(["show", "HEAD:course-map.json"])).stdout);
+    const after = JSON.parse(await readFile(targets.courseMap, "utf8"));
+    const title = (map, id) => map.lessons.find(item => item.id === id)?.title || id;
+    if (before.course.currentLessonId !== after.course.currentLessonId) lessonChanges.push(`Current lesson: ${title(before, before.course.currentLessonId)} → ${title(after, after.course.currentLessonId)}`);
+    for (const lesson of after.lessons) {
+      const old = before.lessons.find(item => item.id === lesson.id);
+      if (!old || lessonIsVisible(old) !== lessonIsVisible(lesson)) lessonChanges.push(`${lesson.title}: ${lessonIsVisible(lesson) ? "Materials available" : "Preview only"}`);
+    }
+    reviewDiff = (await runPublicGit(["diff", "HEAD", "--", ...publishPaths])).stdout;
+  } catch (error) {
+    addCheck("Change review", "blocked", `Unable to prepare the change review: ${commandErrorMessage(error)}`);
+  }
   const workspaceFingerprint = await publicPathFingerprint(status);
   const reviewToken = sha256(JSON.stringify({
     branch,
@@ -716,6 +732,8 @@ async function collectCoursePublishPreflight({ refreshRemote = true, rebuild = t
   }));
 
   return {
+    lessonChanges,
+    reviewDiff,
     generatedAt: new Date().toISOString(),
     canPublish: blockers.length === 0 && includedChanges.length > 0,
     reviewToken,
@@ -1250,6 +1268,17 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && request.url === "/api/teaching/week") {
       await handleTeachingWeek(response);
+      return;
+    }
+
+    if (request.method === "GET" && request.url.split("?")[0] === "/api/course/website-status") {
+      const commit = new URL(request.url, "http://localhost").searchParams.get("commit") || "";
+      if (commit && !/^[a-f0-9]{7,40}$/.test(commit)) { sendJson(response, 400, { error: "Invalid publication reference." }); return; }
+      const expectedCommit = commit ? (await runPublicGit(["rev-parse", commit])).stdout : "";
+      sendJson(response, 200, await inspectLiveWebsite({
+        readLocal: path => readFile(join(targets.publicRepo, path), "utf8"), expectedCommit,
+        readPublished: async path => (await runPublicGit(["show", `${expectedCommit}:${path}`], { preserveWhitespace: true })).stdout
+      }));
       return;
     }
 

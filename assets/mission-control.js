@@ -1,3 +1,4 @@
+import { setupWebsiteUpdate } from "./website-update.js";
 import {
   CANVAS_MANUAL_WORKFLOW_WARNING,
   classifyStudentMaterials,
@@ -751,7 +752,7 @@ function renderCurrentPrep(dashboard) {
   const currentState = document.querySelector("#selectedCurrentState");
   if (currentState) currentState.textContent = selected.isCurrent ? "Current" : "Not current";
   const setCurrent = document.querySelector("#setCurrentLessonButton");
-  if (setCurrent) { setCurrent.disabled = selected.isCurrent; setCurrent.textContent = "Make Current"; }
+  if (setCurrent) { setCurrent.disabled = selected.isCurrent; setCurrent.textContent = "Save locally for later"; setCurrent.dataset.current = String(selected.isCurrent); }
   const openFolder = document.querySelector("#openCurrentInstructorFolder");
   if (openFolder) openFolder.disabled = !selected.instructorFolderId;
 }
@@ -973,7 +974,7 @@ function renderInstructorDashboard(dashboard) {
   renderCurrentPrep(dashboard);
   renderLessonWorkspace(dashboard);
   renderModuleDashboard(dashboard);
-  document.querySelector("#currentCourseLesson").textContent = `Current course lesson: ${dashboard.currentLesson?.title || "Not selected"}`;
+  document.querySelector("#currentCourseLesson").textContent = `Saved on this computer: ${dashboard.currentLesson?.title || "Not selected"}`;
   const picker = document.querySelector("#lessonPicker"); picker.innerHTML = "";
   for (const lesson of flattenedLessons(dashboard).sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))) {
     const option = document.createElement("option"); option.value = lesson.id;
@@ -1490,7 +1491,8 @@ document.addEventListener("click", async (event) => {
       instructorState.selectedLessonId = lessonId;
       renderInstructorDashboard(result.dashboard);
       const regenerationStatus = result.regeneration?.status || "unknown";
-      writeLog(`Current lesson set to ${result.currentLessonTitle}. Index regeneration: ${regenerationStatus}. Review Visibility & Publishing when ready.`);
+      writeLog(`Current lesson saved locally: ${result.currentLessonTitle}. Index regeneration: ${regenerationStatus}.`);
+      document.querySelector("#websiteUpdateNotice").textContent = `Saved locally: ${result.currentLessonTitle}. Use Update student website when ready to publish.`;
       await loadCourseVisibility();
       await loadTeachingWeek();
     }
@@ -1622,6 +1624,7 @@ document.addEventListener("click", async (event) => {
       }
       setWorkflowNotice("publishNotice", error.message, "error");
     }
+    if (action.kind === "setCurrentLesson") document.querySelector("#websiteUpdateNotice").textContent = `Not saved: ${error.message}`;
     writeLog(`Error: ${error.message}. Make sure Mission Control is running at http://localhost:8123/.`);
   } finally {
     if (["savePrepNotes", "saveAfterClassHandoff"].includes(action.kind)) button.disabled = !notesState.loaded;
@@ -1830,3 +1833,14 @@ document.querySelector("#exportNotes").addEventListener("click", async () => {
   } catch (error) { setWorkflowNotice("notesNotice", `Export failed: ${error.message}`, "error"); }
 });
 window.addEventListener("hashchange", () => setActiveView(location.hash.slice(1)));
+
+setupWebsiteUpdate({
+  selectedId, postJson,
+  pendingVisibility: () => visibilityPendingChanges().length > 0,
+  refresh: async dashboard => {
+    instructorState.dashboard = dashboard;
+    renderInstructorDashboard(dashboard);
+    await loadCourseVisibility();
+    await loadTeachingWeek();
+  }
+});
