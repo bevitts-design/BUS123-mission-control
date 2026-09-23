@@ -37,8 +37,8 @@ const targets = {
   instructorGrading: join(INSTRUCTOR_REPO, "grading"),
   courseMap: join(PUBLIC_REPO, "course-map.json"),
   desktop: join(HOME_DIR, "Desktop"),
-  brandTemplate: "https://drive.google.com/file/d/1xty2pm0baSDRKKT1ncCyrVWJrD29cDfm",
-  projectInstructions: "https://docs.google.com/document/d/1OxAbv_Hpn7N8xT3Aw7YylfGPatpvmKLI4SZGk4_0m38/edit?usp=drivesdk"
+  brandTemplate: join(PUBLIC_REPO, "assets/brand/build-spec.md"),
+  projectInstructions: join(INSTRUCTOR_REPO, "guidance/BUS123-Project-Instructions-current.md")
 };
 
 const materialRoots = {
