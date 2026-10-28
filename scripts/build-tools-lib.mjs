@@ -114,6 +114,10 @@ export async function validatePublicMaterials({ publicRoot }) {
         continue;
       }
 
+      // Web links are handled by the browser, not the local filesystem.
+      // Keep this consistent with the public course-map generator.
+      if (/^https?:\/\//i.test(material.path)) continue;
+
       const absolutePath = join(publicRoot, material.path);
       if (isAbsolute(material.path) || !isPathInside(absolutePath, publicRoot)) {
         errors.push(issue("error", `Material path escapes the public repo for lesson ${lesson.id}.`, material.path));
